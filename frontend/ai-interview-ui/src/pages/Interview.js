@@ -14,6 +14,7 @@ function Interview() {
   const navigate = useNavigate();
   const location = useLocation();
   const customContext = location.state || {}; // { jobRole, resumeText }
+  const interviewRootRef = useRef(null);
 
   // decide if the selected job role is 'technical'
   const isTechnicalRole = customContext.jobRole
@@ -55,7 +56,6 @@ function Interview() {
   }, [customContext.jobRole, customContext.resumeText, isTechnicalRole]);
   const videoRef = useRef(null);
   const cameraStreamRef = useRef(null);
-  const screenStreamRef = useRef(null);
   const recognitionRef = useRef(null);
   const silenceTimerRef = useRef(null);
 
@@ -64,6 +64,7 @@ function Interview() {
   const [started, setStarted] = useState(false);
   const [error, setError] = useState("");
   const [transcript, setTranscript] = useState("");
+  const [fullscreenRequired, setFullscreenRequired] = useState(false);
 
   /* TEXT TO SPEECH */
   const speak = (text) =>
@@ -89,16 +90,56 @@ function Interview() {
     await videoRef.current.play();
   };
 
-  /* SCREEN SHARE */
-  const requestScreenShare = async () => {
+  const ensureFullscreenMode = async () => {
+    if (document.fullscreenElement) {
+      return true;
+    }
+
+    const target =
+      interviewRootRef.current ||
+      document.documentElement;
+
+    const requestFullscreen =
+      target.requestFullscreen ||
+      target.webkitRequestFullscreen ||
+      target.msRequestFullscreen;
+
+    if (!requestFullscreen) {
+      throw new Error("Fullscreen mode is not supported in this browser.");
+    }
+
+    await requestFullscreen.call(target);
+
+    const enteredFullscreen = Boolean(
+      document.fullscreenElement ||
+      document.webkitFullscreenElement ||
+      document.msFullscreenElement
+    );
+
+    if (!enteredFullscreen) {
+      throw new Error("Fullscreen did not start. Please try again.");
+    }
+
+    return true;
+  };
+
+  const exitFullscreenMode = async () => {
+    if (document.fullscreenElement) {
+      try {
+        await document.exitFullscreen();
+      } catch {}
+    }
+  };
+
+  const restoreFullscreenMode = async () => {
     try {
-      const screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: true
-      });
-      screenStream.getTracks().forEach((t) => t.stop());
-      screenStreamRef.current = screenStream;
+      await ensureFullscreenMode();
+      setFullscreenRequired(false);
+      setError("");
+      setStatus("Fullscreen restored. Continue speaking.");
+      startListening();
     } catch (err) {
-      console.log("Screen share skipped");
+      setError("Fullscreen is required to continue the interview.");
     }
   };
 
@@ -143,6 +184,7 @@ function Interview() {
 
       // Save result
       saveInterviewResult();
+      await exitFullscreenMode();
 
       // Navigate to results after 2 seconds
       setTimeout(() => navigate("/"), 2000);
@@ -151,6 +193,10 @@ function Interview() {
 
   /* SPEECH RECOGNITION */
   const startListening = useCallback(() => {
+    if (fullscreenRequired) {
+      return;
+    }
+
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -187,11 +233,12 @@ function Interview() {
 
     recognition.onerror = stopListening;
     recognition.start();
-  }, [stopListening]);
+  }, [fullscreenRequired, stopListening]);
 
   /* MAIN FLOW */
   useEffect(() => {
     if (!started) return;
+    if (fullscreenRequired) return;
 
     const run = async () => {
       setStatus("Asking question...");
@@ -200,31 +247,51 @@ function Interview() {
     };
 
     run();
-  }, [started, currentIndex, startListening, questions]);
+  }, [started, currentIndex, fullscreenRequired, startListening, questions]);
 
   /* START INTERVIEW */
   const beginInterview = async () => {
     try {
+      setError("");
+      await ensureFullscreenMode();
       await startCameraAndMic();
-      await requestScreenShare();
+      setFullscreenRequired(false);
       setStarted(true);
     } catch (err) {
-      setError("Permissions denied or unavailable.");
+      setError(err.message || "Fullscreen is required to start the interview. Please try again.");
       console.error(err);
     }
   };
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (!started) return;
+
+      if (!document.fullscreenElement) {
+        recognitionRef.current?.stop();
+        clearTimeout(silenceTimerRef.current);
+        setFullscreenRequired(true);
+        setError("Fullscreen was exited. Re-enter fullscreen to continue the interview.");
+        setStatus("Interview paused until fullscreen mode is restored.");
+      }
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, [started]);
 
   /* CLEANUP */
   useEffect(() => {
     return () => {
       cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
+      exitFullscreenMode();
       recognitionRef.current?.stop();
       clearTimeout(silenceTimerRef.current);
     };
   }, []);
 
   return (
-    <div className="mock-page reveal">
+    <div className="mock-page reveal" ref={interviewRootRef}>
       {/* TOP NAV */}
       <div style={{
         padding: "16px 40px",
@@ -247,12 +314,40 @@ function Interview() {
 
       {error && <div style={{ color: "red", padding: "20px", textAlign: "center", fontWeight: "bold" }}>{error}</div>}
 
+      {fullscreenRequired && (
+        <div
+          style={{
+            maxWidth: 900,
+            margin: "20px auto 0",
+            padding: "18px 20px",
+            background: "#fff7ed",
+            border: "1px solid #fdba74",
+            borderRadius: "12px",
+            color: "#9a3412",
+            textAlign: "center",
+            boxShadow: "0 10px 24px rgba(249, 115, 22, 0.12)"
+          }}
+        >
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>Fullscreen Required</div>
+          <div style={{ marginBottom: 14 }}>
+            The interview is paused because fullscreen mode was exited. Please re-enter fullscreen to continue.
+          </div>
+          <button
+            className="mock-btn"
+            style={{ marginTop: 0, background: "#ea580c", padding: "12px 24px" }}
+            onClick={restoreFullscreenMode}
+          >
+            Re-enter Fullscreen
+          </button>
+        </div>
+      )}
+
       {!started ? (
         <div className="mock-section" style={{ maxHeight: "80vh", display: "flex", flexDirection: "column", justifyContent: "center" }}>
           <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
             <h1>Ready to Start Your Interview?</h1>
             <p style={{ fontSize: 16, color: "#555", marginTop: 12 }}>
-              You'll be asked {questions.length} questions. Speak clearly and take a moment to think before answering.
+              You'll be asked {questions.length} questions. Speak clearly, stay in fullscreen mode, and take a moment to think before answering.
             </p>
 
             <button
@@ -340,7 +435,7 @@ function Interview() {
             {/* ACTION BUTTON */}
             <button
               onClick={stopListening}
-              disabled={status === "Processing answer..."}
+              disabled={status === "Processing answer..." || fullscreenRequired}
               style={{
                 width: "100%",
                 marginTop: "20px",
@@ -351,7 +446,7 @@ function Interview() {
                 borderRadius: "8px",
                 fontWeight: "600",
                 cursor: "pointer",
-                opacity: status === "Processing answer..." ? 0.6 : 1
+                opacity: status === "Processing answer..." || fullscreenRequired ? 0.6 : 1
               }}
             >
               ✓ Done with this question
