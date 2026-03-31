@@ -23,6 +23,12 @@ const LocationIcon = () => (
   </svg>
 );
 
+const ScreenShareIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+    <path d="M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-4.5l1.5 2h1a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h1l1.5-2H6a2 2 0 0 1-2-2V5zm2 0v9h12V5H6z" />
+  </svg>
+);
+
 function Permissions() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -36,6 +42,7 @@ function Permissions() {
   const [deniedPerm, setDeniedPerm] = useState({
     camera: false,
     microphone: false,
+    screen: false,
     location: false
   });
   // loading state per permission so we can show cursor/spinner
@@ -52,7 +59,7 @@ function Permissions() {
 
   const resetPermissionsState = () => {
     setPermissions({ camera: false, microphone: false, screen: false, location: false });
-    setDeniedPerm({ camera: false, microphone: false, location: false });
+    setDeniedPerm({ camera: false, microphone: false, screen: false, location: false });
     setLoadingPerm({ camera: false, microphone: false, screen: false, location: false });
     setRequesting(false);
     setAudioLevel(0);
@@ -173,12 +180,24 @@ function Permissions() {
 
   const requestScreen = async () => {
     setLoadingPerm((l) => ({ ...l, screen: true }));
+    setDeniedPerm((d) => ({ ...d, screen: false }));
     try {
       const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const videoTrack = screenStream.getVideoTracks()[0];
+      const displaySurface = videoTrack?.getSettings?.().displaySurface;
+      const sharedEntireScreen = !displaySurface || displaySurface === "monitor";
+
+      if (!sharedEntireScreen) {
+        screenStream.getTracks().forEach((t) => t.stop());
+        setDeniedPerm((d) => ({ ...d, screen: true }));
+        alert("Please choose Entire Screen when granting screen-sharing permission.");
+        return;
+      }
+
       screenStream.getTracks().forEach((t) => t.stop());
       setPermissions((p) => ({ ...p, screen: true }));
     } catch (err) {
-      console.log("Screen share permission denied (optional)");
+      setDeniedPerm((d) => ({ ...d, screen: true }));
     } finally {
       setLoadingPerm((l) => ({ ...l, screen: false }));
     }
@@ -255,7 +274,7 @@ function Permissions() {
     }
   };
 
-  const allPermissionsGranted = permissions.camera && permissions.microphone && permissions.location;
+  const allPermissionsGranted = permissions.camera && permissions.microphone && permissions.screen && permissions.location;
 
   // change cursor to wait when any permission is loading
   React.useEffect(() => {
@@ -455,6 +474,23 @@ function Permissions() {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <span>Your Network is Compatible</span>
                 <span style={{ color: "#10b981", fontWeight: 700 }}>✓</span>
+              </div>
+
+              {/* entire screen sharing */}
+              <div
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
+              >
+                <span className="perm-item" onClick={requestScreen} style={{ cursor: "pointer" }}>
+                  <ScreenShareIcon className="perm-icon" /> Entire Screen Sharing
+                </span>
+                <button
+                  className={`mock-btn grant-btn ${permissions.screen ? "granted" : deniedPerm.screen ? "denied" : ""}`}
+                  disabled={permissions.screen || loadingPerm.screen}
+                  onClick={requestScreen}
+                  style={{ cursor: loadingPerm.screen ? "wait" : "pointer" }}
+                >
+                  {loadingPerm.screen ? <span className="spinner" /> : permissions.screen ? "✓ Granted" : deniedPerm.screen ? "✕ Denied" : "Grant"}
+                </button>
               </div>
 
               {/* location */}
