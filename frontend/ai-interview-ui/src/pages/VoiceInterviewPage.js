@@ -610,9 +610,11 @@ function VoiceInterviewPage() {
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             <button className="go-back-btn" onClick={() => navigate(-1)}>Back</button>
             <button className="mock-btn" onClick={() => navigate("/")}>Home</button>
-            <button className="mock-btn" onClick={handleEndInterview} style={{ background: "linear-gradient(135deg, #dc2626, #f97316)" }}>
-              End Interview
-            </button>
+            {started ? (
+              <button className="mock-btn" onClick={handleEndInterview} style={{ background: "linear-gradient(135deg, #dc2626, #f97316)" }}>
+                End Interview
+              </button>
+            ) : null}
           </div>
         </div>
 
