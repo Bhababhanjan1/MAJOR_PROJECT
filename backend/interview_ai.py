@@ -16,9 +16,11 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b").strip()
 OLLAMA_TIMEOUT_SECONDS = max(30, int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "300")))
+LIVE_AI_TIMEOUT_SECONDS = max(8, int(os.getenv("LIVE_AI_TIMEOUT_SECONDS", "12")))
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
 
 INTERVIEW_SESSIONS: Dict[str, Dict[str, Any]] = {}
+ACTIVE_SESSION_TTL_SECONDS = max(3600, int(os.getenv("ACTIVE_SESSION_TTL_SECONDS", "86400")))
 
 ROLE_PROFILES: List[Dict[str, Any]] = [
     {
@@ -157,6 +159,56 @@ class ProviderError(Exception):
     pass
 
 
+def _session_store_dir() -> str:
+    path = os.path.join(os.path.dirname(__file__), ".runtime", "interview_sessions")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _session_file_path(session_id: str) -> str:
+    safe_session_id = re.sub(r"[^a-zA-Z0-9_-]", "", (session_id or "").strip())
+    return os.path.join(_session_store_dir(), f"{safe_session_id}.json")
+
+
+def _persist_session(session: Dict[str, Any]) -> None:
+    session_id = _normalize_text(session.get("session_id") or "")
+    if not session_id:
+        return
+    file_path = _session_file_path(session_id)
+    with open(file_path, "w", encoding="utf-8") as handle:
+        json.dump(session, handle, ensure_ascii=False)
+
+
+def _load_persisted_session(session_id: str) -> Optional[Dict[str, Any]]:
+    file_path = _session_file_path(session_id)
+    if not os.path.exists(file_path):
+        return None
+    try:
+        with open(file_path, "r", encoding="utf-8") as handle:
+            session = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    created_at = float(session.get("created_at") or 0)
+    if created_at and (time.time() - created_at) > ACTIVE_SESSION_TTL_SECONDS:
+        try:
+            os.remove(file_path)
+        except OSError:
+            pass
+        return None
+    return session if isinstance(session, dict) else None
+
+
+def _get_session(session_id: str) -> Optional[Dict[str, Any]]:
+    session = INTERVIEW_SESSIONS.get(session_id)
+    if session:
+        return session
+    session = _load_persisted_session(session_id)
+    if session:
+        INTERVIEW_SESSIONS[session_id] = session
+    return session
+
+
 def _json_headers(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     headers = {"Content-Type": "application/json"}
     if extra:
@@ -185,6 +237,8 @@ def _http_post_json(
         raise ProviderError(f"HTTP {exc.code} calling {url}: {body or exc.reason}") from exc
     except urllib.error.URLError as exc:
         raise ProviderError(f"Failed to reach {url}: {exc.reason}") from exc
+    except TimeoutError as exc:
+        raise ProviderError(f"Timed out calling {url}") from exc
     except json.JSONDecodeError as exc:
         raise ProviderError(f"Invalid JSON response from {url}") from exc
 
@@ -208,6 +262,8 @@ def _http_get_json(
         raise ProviderError(f"HTTP {exc.code} calling {url}: {body or exc.reason}") from exc
     except urllib.error.URLError as exc:
         raise ProviderError(f"Failed to reach {url}: {exc.reason}") from exc
+    except TimeoutError as exc:
+        raise ProviderError(f"Timed out calling {url}") from exc
     except json.JSONDecodeError as exc:
         raise ProviderError(f"Invalid JSON response from {url}") from exc
 
@@ -404,7 +460,11 @@ def _fallback_role_blueprint(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-async def _call_gemini_json(prompt: str, temperature: float = 0.35) -> Dict[str, Any]:
+async def _call_gemini_json(
+    prompt: str,
+    temperature: float = 0.35,
+    timeout_seconds: Optional[int] = None,
+) -> Dict[str, Any]:
     if not GEMINI_API_KEY:
         raise ProviderError("GEMINI_API_KEY is not configured.")
 
@@ -419,7 +479,7 @@ async def _call_gemini_json(prompt: str, temperature: float = 0.35) -> Dict[str,
             "response_mime_type": "application/json",
         },
     }
-    data = await asyncio.to_thread(_http_post_json, url, payload, None, 80)
+    data = await asyncio.to_thread(_http_post_json, url, payload, None, timeout_seconds or 80)
     parts = (
         data.get("candidates", [{}])[0]
         .get("content", {})
@@ -429,7 +489,11 @@ async def _call_gemini_json(prompt: str, temperature: float = 0.35) -> Dict[str,
     return _extract_json_block(text)
 
 
-async def _call_ollama_json(prompt: str, temperature: float = 0.2) -> Dict[str, Any]:
+async def _call_ollama_json(
+    prompt: str,
+    temperature: float = 0.2,
+    timeout_seconds: Optional[int] = None,
+) -> Dict[str, Any]:
     url = f"{OLLAMA_BASE_URL}/api/generate"
     effective_prompt = prompt
     if OLLAMA_MODEL.lower().startswith("qwen3") and not prompt.lstrip().startswith("/no_think"):
@@ -442,7 +506,13 @@ async def _call_ollama_json(prompt: str, temperature: float = 0.2) -> Dict[str, 
         "format": "json",
         "options": {"temperature": temperature},
     }
-    data = await asyncio.to_thread(_http_post_json, url, payload, None, OLLAMA_TIMEOUT_SECONDS)
+    data = await asyncio.to_thread(
+        _http_post_json,
+        url,
+        payload,
+        None,
+        timeout_seconds or OLLAMA_TIMEOUT_SECONDS,
+    )
     text = data.get("response", "")
     return _extract_json_block(text)
 
@@ -450,15 +520,16 @@ async def _call_ollama_json(prompt: str, temperature: float = 0.2) -> Dict[str, 
 async def _generate_json_with_fallback(
     prompt: str,
     order: List[str],
-    temperature: float = 0.3
+    temperature: float = 0.3,
+    timeout_seconds: Optional[int] = None,
 ) -> Tuple[Dict[str, Any], str]:
     errors = []
     for provider in order:
         try:
             if provider == "gemini":
-                return await _call_gemini_json(prompt, temperature), "gemini"
+                return await _call_gemini_json(prompt, temperature, timeout_seconds), "gemini"
             if provider == "ollama":
-                return await _call_ollama_json(prompt, temperature), "ollama"
+                return await _call_ollama_json(prompt, temperature, timeout_seconds), "ollama"
         except ProviderError as exc:
             errors.append(f"{provider}: {exc}")
 
@@ -1180,69 +1251,7 @@ def _fallback_stack_analysis(answer_text: str, payload: Dict[str, Any]) -> Dict[
 
 async def _analyze_discovery_answer(session: Dict[str, Any], answer_text: str) -> Tuple[Dict[str, Any], str]:
     payload = session.get("context", {})
-    role_blueprint = session.get("meta", {}).get("role_blueprint") or {}
-    prompt = f"""
-You are helping an AI interviewer discover the candidate's preferred technology stack.
-
-Interview context:
-{_context_summary(payload)}
-
-Role blueprint:
-- Role label: {role_blueprint.get("role_label") or payload.get("job_role") or "Not specified"}
-- Core areas: {', '.join(role_blueprint.get("core_areas") or [])}
-- Tech stack hints: {', '.join(role_blueprint.get("tech_stack") or [])}
-
-Candidate answer:
-{answer_text}
-
-Return valid JSON with this exact shape:
-{{
-  "preferred_language": "single best language to focus on first, or empty string",
-  "languages": ["languages explicitly mentioned or directly implied"],
-  "frameworks": ["frameworks explicitly mentioned"],
-  "databases": ["databases explicitly mentioned"],
-  "tools": ["infra or platform tools explicitly mentioned"],
-  "focus_areas": ["the most useful technical areas to focus on next"],
-  "confidence_summary": "one sentence on what the candidate seems strongest in",
-  "needs_clarification": false,
-  "clarification_question": "short follow-up question if the preference is still unclear",
-  "acknowledgement": "one short human-like acknowledgement"
-}}
-
-Rules:
-- Do not assume a language unless the candidate mentioned it or a framework directly implies it.
-- If the candidate mentions multiple languages and no preference, ask which one to focus on first.
-- Keep the acknowledgement warm and professional.
-- Do not use markdown.
-"""
-
-    try:
-        analysis, provider = await _generate_json_with_fallback(prompt, ["gemini", "ollama"], 0.1)
-        normalized = {
-            "preferred_language": _normalize_text(analysis.get("preferred_language") or ""),
-            "languages": _safe_list(analysis.get("languages")),
-            "frameworks": _safe_list(analysis.get("frameworks")),
-            "databases": _safe_list(analysis.get("databases")),
-            "tools": _safe_list(analysis.get("tools")),
-            "focus_areas": _safe_list(analysis.get("focus_areas")),
-            "confidence_summary": _normalize_text(analysis.get("confidence_summary") or ""),
-            "needs_clarification": bool(analysis.get("needs_clarification")),
-            "clarification_question": _normalize_text(analysis.get("clarification_question") or ""),
-            "acknowledgement": _normalize_text(analysis.get("acknowledgement") or ""),
-        }
-        if not any(
-            [
-                normalized["preferred_language"],
-                normalized["languages"],
-                normalized["frameworks"],
-                normalized["databases"],
-                normalized["tools"],
-            ]
-        ):
-            raise ProviderError("Discovery analysis did not return a usable stack profile.")
-        return normalized, provider
-    except ProviderError:
-        return _fallback_stack_analysis(answer_text, payload), "fallback"
+    return _fallback_stack_analysis(answer_text, payload), "fallback"
 
 
 def _apply_discovery_analysis(state: Dict[str, Any], analysis: Dict[str, Any]) -> None:
@@ -1264,10 +1273,10 @@ def _adaptive_focus_candidates(session: Dict[str, Any], last_question: Optional[
     role_blueprint = session.get("meta", {}).get("role_blueprint") or {}
     selected_options = _safe_list(session.get("context", {}).get("selected_options") or [])
     candidates: List[str] = []
-    candidates = _merge_unique(candidates, [state.get("preferred_language") or ""])
     candidates = _merge_unique(candidates, state.get("frameworks") or [])
     candidates = _merge_unique(candidates, state.get("databases") or [])
     candidates = _merge_unique(candidates, state.get("tools") or [])
+    candidates = _merge_unique(candidates, [state.get("preferred_language") or ""])
     candidates = _merge_unique(candidates, selected_options)
     candidates = _merge_unique(candidates, _safe_list(role_blueprint.get("tech_stack")))
     candidates = _merge_unique(candidates, _safe_list(role_blueprint.get("core_areas")))
@@ -1429,7 +1438,12 @@ Rules:
 """
 
     try:
-        generated, provider = await _generate_json_with_fallback(prompt, ["gemini", "ollama"], 0.2)
+        generated, provider = await _generate_json_with_fallback(
+            prompt,
+            ["gemini", "ollama"],
+            0.2,
+            LIVE_AI_TIMEOUT_SECONDS,
+        )
         question = {
             "assistant_reply": _normalize_text(generated.get("assistant_reply") or ""),
             "question": _normalize_text(generated.get("question") or ""),
@@ -1577,6 +1591,7 @@ async def _create_adaptive_interview_session(
     )
 
     INTERVIEW_SESSIONS[session_id] = session
+    _persist_session(session)
     return {
         "session_id": session_id,
         "assistant_intro": session["assistant_intro"],
@@ -1652,7 +1667,8 @@ async def _evaluate_adaptive_interview_answer(
             )
         else:
             state["discovery_complete"] = True
-            generated_question, provider = await _generate_adaptive_question(session, question, answer_text, evaluation)
+            generated_question = _fallback_adaptive_question(session, question, {"score": 40}, "technical")
+            provider = "fallback"
             session["providers"]["generation_provider"] = provider
             evaluation["assistant_reply"] = _normalize_text(
                 generated_question.get("assistant_reply") or acknowledgement
@@ -1725,6 +1741,7 @@ Rules:
             prompt,
             ["gemini", "ollama"],
             0.2,
+            LIVE_AI_TIMEOUT_SECONDS,
         )
     except ProviderError:
         evaluation = _heuristic_evaluation(question, answer_text)
@@ -1757,7 +1774,13 @@ Rules:
             is_complete=True,
         )
 
-    generated_question, provider = await _generate_adaptive_question(session, question, answer_text, evaluation)
+    if provider_used == "fallback":
+        generated_question, provider = (
+            _fallback_adaptive_question(session, question, evaluation, _next_adaptive_track(state)),
+            "fallback",
+        )
+    else:
+        generated_question, provider = await _generate_adaptive_question(session, question, answer_text, evaluation)
     session["providers"]["generation_provider"] = provider
     evaluation["assistant_reply"] = _normalize_text(
         generated_question.get("assistant_reply") or evaluation.get("assistant_reply") or "Thanks. Let’s continue."
@@ -1788,16 +1811,17 @@ async def create_interview_session(payload: Dict[str, Any]) -> Dict[str, Any]:
     difficulty = _difficulty_from_experience(payload.get("experience") or "")
     target_subject = payload.get("primary_language") if payload.get("selected_mode") == "language" else payload.get("job_role")
     target_subject = target_subject or payload.get("job_role") or payload.get("primary_language") or "the selected interview focus"
-    role_profile = _match_role_profile(payload.get("job_role") or "")
-    role_blueprint, blueprint_provider = await _infer_role_blueprint(payload)
     if _adaptive_role_interview_enabled(payload):
+        role_blueprint = _fallback_role_blueprint(payload)
         return await _create_adaptive_interview_session(
             payload,
             question_count,
             difficulty,
             role_blueprint,
-            blueprint_provider,
+            "fallback",
         )
+    role_profile = _match_role_profile(payload.get("job_role") or "")
+    role_blueprint, blueprint_provider = await _infer_role_blueprint(payload)
     role_profile_summary = ""
     if role_profile:
         role_profile_summary = (
@@ -1901,7 +1925,7 @@ Rules:
         ]
 
     session_id = str(uuid.uuid4())
-    INTERVIEW_SESSIONS[session_id] = {
+    session = {
         "session_id": session_id,
         "created_at": time.time(),
         "context": payload,
@@ -1928,6 +1952,8 @@ Rules:
             for question in questions
         ],
     }
+    INTERVIEW_SESSIONS[session_id] = session
+    _persist_session(session)
 
     return {
         "session_id": session_id,
@@ -1935,8 +1961,8 @@ Rules:
         "total_questions": len(questions),
         "current_question": questions[0]["question"],
         "providers": provider_meta,
-        "meta": INTERVIEW_SESSIONS[session_id]["meta"],
-        "question_outline": INTERVIEW_SESSIONS[session_id]["question_outline"],
+        "meta": session["meta"],
+        "question_outline": session["question_outline"],
     }
 
 
@@ -1945,7 +1971,7 @@ async def evaluate_interview_answer(
     question_index: int,
     answer: str
 ) -> Dict[str, Any]:
-    session = INTERVIEW_SESSIONS.get(session_id)
+    session = _get_session(session_id)
     if not session:
         raise ProviderError("Interview session not found.")
 
@@ -1956,12 +1982,14 @@ async def evaluate_interview_answer(
     question = questions[question_index]
     answer_text = _normalize_text(answer)
     if session.get("meta", {}).get("adaptive_state", {}).get("enabled"):
-        return await _evaluate_adaptive_interview_answer(
+        result = await _evaluate_adaptive_interview_answer(
             session,
             question_index,
             question,
             answer_text,
         )
+        _persist_session(session)
+        return result
 
     context_summary = _context_summary(session["context"])
     expected_points = question.get("expected_points") or []
@@ -2010,6 +2038,7 @@ Rules:
             prompt,
             ["gemini", "ollama"],
             0.2,
+            LIVE_AI_TIMEOUT_SECONDS,
         )
     except ProviderError:
         evaluation = _heuristic_evaluation(question, answer_text)
@@ -2057,6 +2086,7 @@ Rules:
         evaluations[question_index] = result
     else:
         evaluations.append(result)
+    _persist_session(session)
 
     is_complete = question_index >= len(questions) - 1
     next_question = None if is_complete else questions[question_index + 1]["question"]
@@ -2116,7 +2146,7 @@ def _fallback_summary(session: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def complete_interview_session(session_id: str, ended_early: bool = False) -> Dict[str, Any]:
-    session = INTERVIEW_SESSIONS.get(session_id)
+    session = _get_session(session_id)
     if not session:
         raise ProviderError("Interview session not found.")
 
@@ -2152,6 +2182,7 @@ Return valid JSON:
             prompt,
             ["gemini", "ollama"],
             0.2,
+            LIVE_AI_TIMEOUT_SECONDS,
         )
     except ProviderError:
         summary = _fallback_summary(session)
@@ -2172,6 +2203,7 @@ Return valid JSON:
     session["ended_early"] = bool(ended_early)
     session["completed_at"] = time.time()
     session["providers"]["summary_provider"] = provider
+    _persist_session(session)
     return {
         **summary,
         "session_id": session_id,
@@ -2191,4 +2223,4 @@ Return valid JSON:
 
 
 def get_session_payload(session_id: str) -> Optional[Dict[str, Any]]:
-    return INTERVIEW_SESSIONS.get(session_id)
+    return _get_session(session_id)

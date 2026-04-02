@@ -328,6 +328,14 @@ function VoiceInterview() {
       improvement_areas: Array.from(new Set(scoredEvaluations.flatMap((item) => item.gaps || []))).slice(0, 4),
       strongest_questions: scoredEvaluations.filter((item) => item.score >= 75).map((item) => item.question).slice(0, 3),
       needs_work_questions: scoredEvaluations.filter((item) => item.score < 60).map((item) => item.question).slice(0, 3),
+      questions_answered: evaluations.length,
+      total_questions: total || Math.max(evaluations.length, 1),
+      question_outline: evaluations.map((item, index) => ({
+        id: item.question_id || String(index + 1),
+        question: item.question,
+        question_type: item.question_type || "practical",
+        score: safeScore(item.score),
+      })),
       evaluations,
       providers,
       user: (() => {
@@ -424,14 +432,26 @@ function VoiceInterview() {
   };
 
   const startCamera = async () => {
-    if (cameraRef.current) return;
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    if (cameraRef.current) return true;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("Camera access is not supported in this browser.");
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: "user",
+        width: { ideal: 640 },
+        height: { ideal: 360 },
+      },
+      audio: false,
+    });
     cameraRef.current = stream;
     if (videoRef.current) {
       videoRef.current.srcObject = stream;
       videoRef.current.muted = true;
-      await videoRef.current.play();
+      videoRef.current.playsInline = true;
+      void videoRef.current.play().catch(() => {});
     }
+    return true;
   };
 
   const stopCamera = () => {
@@ -449,7 +469,7 @@ function VoiceInterview() {
     videoRef.current.playsInline = true;
 
     try {
-      await videoRef.current.play();
+      void videoRef.current.play().catch(() => {});
     } catch {}
   };
 
@@ -538,6 +558,19 @@ function VoiceInterview() {
         return;
       }
 
+      if (endedEarly && history.length) {
+        const fallbackSummary = buildLocalFallbackSummary(true);
+        setSummary(fallbackSummary);
+        setStatus("Interview ended early.");
+        openResultsPage(fallbackSummary, activeSessionId);
+        void axios.post(
+          `${API_BASE_URL}/ai-interview/complete`,
+          { session_id: activeSessionId, ended_early: true },
+          { headers: authHeaders() }
+        ).catch(() => {});
+        return;
+      }
+
       const response = await axios.post(
         `${API_BASE_URL}/ai-interview/complete`,
         { session_id: activeSessionId, ended_early: endedEarly },
@@ -566,16 +599,15 @@ function VoiceInterview() {
         requestError.message ||
         "Failed to complete the interview."
       );
-
-      if (message.toLowerCase().includes("interview session not found")) {
-        const fallbackSummary = buildLocalFallbackSummary(endedEarly);
-        setSummary(fallbackSummary);
-        setStatus(endedEarly ? "Interview ended early." : "Interview completed.");
-        openResultsPage(fallbackSummary, fallbackSummary.session_id);
-        return;
-      }
-
-      throw requestError;
+      const fallbackSummary = {
+        ...buildLocalFallbackSummary(endedEarly),
+        summary: history.length
+          ? `${buildLocalFallbackSummary(endedEarly).summary} Backend completion issue: ${message}`
+          : "The interview ended before the backend completion step finished, so a local report was created from the information available on this page.",
+      };
+      setSummary(fallbackSummary);
+      setStatus(endedEarly ? "Interview ended early." : "Interview completed.");
+      openResultsPage(fallbackSummary, fallbackSummary.session_id);
     } finally {
       stopListening();
       stopSpeech();
@@ -693,14 +725,24 @@ function VoiceInterview() {
     setInterim("");
     endRequestedRef.current = false;
     finalizingRef.current = false;
+    setStatus("Starting interview...");
+    setQuestion("");
+    setStarted(false);
 
     try {
       await ensureFullscreen();
-      await startCamera();
+      setStatus("Preparing your interview room...");
+
+      const cameraSetup = startCamera()
+        .then(() => attachCameraPreview())
+        .then(() => null)
+        .catch((cameraError) => cameraError);
+
       const response = await axios.post(`${API_BASE_URL}/ai-interview/start`, payload, {
         headers: authHeaders(),
       });
       const data = response.data;
+      const cameraError = await cameraSetup;
       setSessionId(data.session_id);
       setProviders(data.providers || {});
       setSessionMeta(data.meta || {});
@@ -711,8 +753,11 @@ function VoiceInterview() {
       setFullscreenBlocked(false);
       const timerMinutes = resolveTimerMinutes();
       setTimeLeftSeconds(timerMinutes ? timerMinutes * 60 : null);
-      setStatus("Interview started.");
-      await attachCameraPreview();
+      setStatus(
+        cameraError
+          ? "Interview started. Camera preview is unavailable, but voice interview is ready."
+          : "Interview started."
+      );
       await speak(safeText(data.assistant_intro) || "Hello. Let us begin.");
       await speak(`Question 1. ${safeText(data.current_question)}`);
       startListening();
@@ -732,6 +777,8 @@ function VoiceInterview() {
               "Failed to start the interview."
             )
       );
+      setStarted(false);
+      setQuestion("");
       setStatus("Interview could not start.");
     } finally {
       setBusy(false);
@@ -752,7 +799,7 @@ function VoiceInterview() {
   };
 
   const handleEndInterview = async () => {
-    if (!sessionIdRef.current || summaryRef.current || finalizingRef.current) {
+    if (summaryRef.current || finalizingRef.current) {
       return;
     }
 

@@ -12,8 +12,6 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from jose import jwt, JWTError
 from bson import ObjectId
-from deepface import DeepFace
-
 from database import users_collection
 from auth_utils import (
     hash_password,
@@ -50,6 +48,8 @@ os.makedirs(FACE_DB, exist_ok=True)
 # ---------------- FACE EMBEDDING ----------------
 def get_embedding(image_path):
     try:
+        from deepface import DeepFace
+
         emb = DeepFace.represent(
             img_path=image_path,
             model_name="Facenet",
@@ -325,17 +325,7 @@ async def start_ai_interview(
     authorization: str = Header(None)
 ):
     try:
-        user = None
-        if authorization:
-            token = authorization.replace("Bearer ", "")
-            user = await get_current_user(token)
-
-        session = await create_interview_session(
-            {
-                **payload,
-                "user_id": str(user["_id"]) if user else None,
-            }
-        )
+        session = await create_interview_session(payload)
         return session
     except ProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -375,39 +365,43 @@ async def complete_ai_interview(
         summary = await complete_interview_session(session_id, ended_early=ended_early)
         session = get_session_payload(session_id)
         current_user = None
+        save_warning = None
 
         if authorization and session:
             token = authorization.replace("Bearer ", "")
-            current_user = await get_current_user(token)
+            try:
+                current_user = await get_current_user(token)
 
-            interview_result = {
-                "session_id": session_id,
-                "category": session.get("context", {}).get("category") or "general",
-                "selected_mode": session.get("context", {}).get("selected_mode"),
-                "job_role": session.get("context", {}).get("job_role"),
-                "primary_language": session.get("context", {}).get("primary_language"),
-                "experience": session.get("context", {}).get("experience"),
-                "context": session.get("context", {}),
-                "score": summary.get("overall_score", 0),
-                "ended_early": summary.get("ended_early", False),
-                "summary": summary.get("summary"),
-                "top_strengths": summary.get("top_strengths", []),
-                "improvement_areas": summary.get("improvement_areas", []),
-                "strongest_questions": summary.get("strongest_questions", []),
-                "needs_work_questions": summary.get("needs_work_questions", []),
-                "providers": summary.get("providers"),
-                "answers": session.get("answers", []),
-                "evaluations": session.get("evaluations", []),
-                "questions_answered": len(session.get("evaluations", [])),
-                "total_questions": len(session.get("questions", [])),
-                "question_outline": session.get("question_outline", summary.get("questions", [])),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
+                interview_result = {
+                    "session_id": session_id,
+                    "category": session.get("context", {}).get("category") or "general",
+                    "selected_mode": session.get("context", {}).get("selected_mode"),
+                    "job_role": session.get("context", {}).get("job_role"),
+                    "primary_language": session.get("context", {}).get("primary_language"),
+                    "experience": session.get("context", {}).get("experience"),
+                    "context": session.get("context", {}),
+                    "score": summary.get("overall_score", 0),
+                    "ended_early": summary.get("ended_early", False),
+                    "summary": summary.get("summary"),
+                    "top_strengths": summary.get("top_strengths", []),
+                    "improvement_areas": summary.get("improvement_areas", []),
+                    "strongest_questions": summary.get("strongest_questions", []),
+                    "needs_work_questions": summary.get("needs_work_questions", []),
+                    "providers": summary.get("providers"),
+                    "answers": session.get("answers", []),
+                    "evaluations": session.get("evaluations", []),
+                    "questions_answered": len(session.get("evaluations", [])),
+                    "total_questions": len(session.get("questions", [])),
+                    "question_outline": session.get("question_outline", summary.get("questions", [])),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
 
-            await users_collection.update_one(
-                {"_id": current_user["_id"]},
-                {"$push": {"interview_results": interview_result}},
-            )
+                await users_collection.update_one(
+                    {"_id": current_user["_id"]},
+                    {"$push": {"interview_results": interview_result}},
+                )
+            except Exception as save_exc:
+                save_warning = f"Interview completed, but saving the report failed: {save_exc}"
 
         return {
             **summary,
@@ -426,6 +420,7 @@ async def complete_ai_interview(
                 if current_user
                 else None
             ),
+            "save_warning": save_warning,
         }
     except ProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
