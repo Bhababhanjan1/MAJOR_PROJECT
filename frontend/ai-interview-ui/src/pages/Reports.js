@@ -380,6 +380,7 @@ function Reports() {
 
           <div className="report-topbar-actions">
             <button className="report-secondary-button" onClick={() => navigate(-1)}>Back</button>
+            <button className="report-secondary-button" onClick={() => navigate("/")}>Home</button>
             <button className="report-primary-button" onClick={() => navigate("/dashboard")}>Dashboard</button>
           </div>
         </div>

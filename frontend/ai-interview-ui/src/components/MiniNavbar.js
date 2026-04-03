@@ -51,6 +51,9 @@ export default function MiniNavbar() {
           <Link to="/technical-interview" className={`nav-link ${location.pathname === "/technical-interview" ? "active" : ""}`}>
             Technical
           </Link>
+          <Link to="/resume-interview" className={`nav-link ${location.pathname === "/resume-interview" ? "active" : ""}`}>
+            Resume Based Interview
+          </Link>
           <Link to="/mock-interview" className={`nav-link ${location.pathname === "/mock-interview" ? "active" : ""}`}>
             Mock
           </Link>

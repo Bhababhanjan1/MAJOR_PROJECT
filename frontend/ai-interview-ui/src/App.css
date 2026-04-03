@@ -1128,6 +1128,8 @@ button {
   align-items: flex-start;
   line-height: 1.1;
   min-width: 140px;
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .profile-user-name {
@@ -1136,6 +1138,8 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: block;
+  width: 100%;
 }
 
 .profile-user-email {
@@ -1144,6 +1148,8 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: block;
+  width: 100%;
 }
 
 .profile-arrow {
@@ -3325,15 +3331,22 @@ button {
   padding-bottom: 80px;
 }
 
+.resume-page {
+  background:
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.08), transparent 24%),
+    radial-gradient(circle at top right, rgba(14, 165, 233, 0.08), transparent 28%),
+    linear-gradient(180deg, #f6f9ff 0%, #eef4ff 46%, #f7fbff 100%);
+}
+
 /* ✅ TOP MINI NAVBAR */
 .category-topnav {
   width: 100%;
   min-height: 80px;
-  padding: 0 70px;
+  padding: 0 36px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 24px;
+  gap: 16px;
   background: rgba(255, 255, 255, 0.15);
   backdrop-filter: blur(14px);
   position: fixed;
@@ -3347,6 +3360,7 @@ button {
   display: flex;
   align-items: center;
   height: 100%;
+  min-width: 0;
 }
 
 .category-topnav .navbar-left,
@@ -3358,6 +3372,8 @@ button {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .category-topnav .navbar-brand,
@@ -3375,6 +3391,7 @@ button {
   color: white;
   font-size: 14px;
   font-weight: 600;
+  min-width: 0;
 }
 
 .category-topnav .navbar-brand-title h2,
@@ -3389,24 +3406,32 @@ button {
   font-size: 12px;
   opacity: 0.85;
   color: white;
+  white-space: nowrap;
 }
 
 .category-topnav .navbar-center {
-  flex: 1;
+  flex: 1 1 auto;
   justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 8px;
 }
 
 .category-topnav .nav-links {
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-wrap: wrap;
-  gap: 10px;
+  flex-wrap: nowrap;
+  gap: 6px;
   padding: 0;
+  width: 100%;
+  min-width: 0;
 }
 
 .category-topnav .navbar-right {
   gap: 12px;
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .category-topnav .profile-card {
@@ -3424,16 +3449,20 @@ button {
 }
 
 .category-topnav .profile-user-details {
-  min-width: 120px;
+  min-width: 0;
+  max-width: 220px;
 }
 
 .category-topnav .nav-link {
-  padding: 8px 12px;
+  padding: 8px 9px;
   color: white;
   background: transparent;
   border-radius: 10px;
   transition: background 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
   position: relative;
+  white-space: nowrap;
+  font-size: 13px;
+  flex: 0 1 auto;
 }
 
 .category-topnav .nav-link::after {
@@ -3480,6 +3509,9 @@ button {
 
 .category-topnav .profile-card {
   align-items: center;
+  max-width: 340px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .category-topnav a:hover {
@@ -3517,6 +3549,13 @@ button {
 .violet-hero {
   background: linear-gradient(135deg, #6a11cb, #8e2de2, #2575fc);
   box-shadow: 0 15px 45px rgba(120, 60, 200, 0.45);
+}
+
+.resume-hero {
+  background:
+    radial-gradient(circle at top left, rgba(191, 219, 254, 0.16), transparent 22%),
+    linear-gradient(135deg, #1e40af, #2563eb 46%, #0ea5e9 100%);
+  box-shadow: 0 18px 48px rgba(37, 99, 235, 0.28);
 }
 
 /* Technical Theme → Pink + Red */

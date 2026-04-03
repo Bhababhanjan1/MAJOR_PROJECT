@@ -88,7 +88,7 @@ function ResumeInterview() {
   };
 
   return (
-    <div className="mock-page reveal">
+    <div className="mock-page resume-page reveal">
       <MiniNavbar />
 
       {/* home button */}
@@ -103,7 +103,7 @@ function ResumeInterview() {
       </div>
 
       {/* hero */}
-      <div className="mock-hero violet-hero">
+      <div className="mock-hero resume-hero">
         <div style={{ maxWidth: 720 }}>
           <h1>Resume‑based Interview</h1>
           <p>
