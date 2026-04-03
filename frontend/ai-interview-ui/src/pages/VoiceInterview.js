@@ -129,6 +129,13 @@ const normalizeEvaluation = (item) => ({
   missed_points: safeTextList(item?.missed_points),
   suggested_answer: safeText(item?.suggested_answer),
   assistant_reply: safeText(item?.assistant_reply),
+  relevance: safeText(item?.relevance),
+  correctness: safeText(item?.correctness),
+  clarity: safeText(item?.clarity),
+  technical_depth: safeText(item?.technical_depth),
+  logical_validity: safeText(item?.logical_validity),
+  real_world_applicability: safeText(item?.real_world_applicability),
+  suggestions: safeTextList(item?.suggestions),
   score: safeScore(item?.score),
   count_towards_score: item?.count_towards_score !== false,
 });
@@ -669,7 +676,11 @@ function VoiceInterview() {
       const progressTotal = Number(response.data?.progress?.total);
       setLatestEval(result);
       setHistory((prev) => [...prev, result]);
-      setProviders((prev) => ({ ...prev, evaluation_provider: result.provider || prev.evaluation_provider }));
+      setProviders((prev) => ({
+        ...prev,
+        ...(response.data?.providers || {}),
+        evaluation_provider: result.provider || prev.evaluation_provider,
+      }));
       if (Number.isFinite(progressTotal) && progressTotal > 0) {
         setTotal(progressTotal);
       }
@@ -731,7 +742,7 @@ function VoiceInterview() {
 
     try {
       await ensureFullscreen();
-      setStatus("Preparing your interview room...");
+      setStatus("Preparing your AI interviewer, first question, and interview room...");
 
       const cameraSetup = startCamera()
         .then(() => attachCameraPreview())
@@ -755,8 +766,8 @@ function VoiceInterview() {
       setTimeLeftSeconds(timerMinutes ? timerMinutes * 60 : null);
       setStatus(
         cameraError
-          ? "Interview started. Camera preview is unavailable, but voice interview is ready."
-          : "Interview started."
+          ? "Interview ready. Camera preview is unavailable, but the voice interview is starting now."
+          : "Interview ready. Starting now."
       );
       await speak(safeText(data.assistant_intro) || "Hello. Let us begin.");
       await speak(`Question 1. ${safeText(data.current_question)}`);
@@ -991,9 +1002,11 @@ function VoiceInterview() {
             <button className="go-back-btn" onClick={() => navigate(-1)}>
               Back
             </button>
-            <button className="mock-btn" onClick={() => navigate("/")}>
-              Home
-            </button>
+            {!started ? (
+              <button className="mock-btn" onClick={() => navigate("/")}>
+                Home
+              </button>
+            ) : null}
             {started && !summary ? (
               <button className="mock-btn" onClick={handleEndInterview} style={{ background: "linear-gradient(135deg, #dc2626, #f97316)" }}>
                 End Interview
@@ -1146,9 +1159,18 @@ function VoiceInterview() {
                       </strong>
                     </div>
                     <p className="voice-ai-copy" style={{ marginTop: 10 }}>{safeText(latestEval.feedback)}</p>
+                    <div className="voice-ai-mini-list" style={{ marginBottom: 12 }}>
+                      <div>- Relevance: {safeText(latestEval.relevance) || "Pending"}</div>
+                      <div>- Correctness: {safeText(latestEval.correctness) || "Pending"}</div>
+                      <div>- Clarity: {safeText(latestEval.clarity) || "Pending"}</div>
+                      <div>- Technical Depth: {safeText(latestEval.technical_depth) || "Pending"}</div>
+                      <div>- Logic: {safeText(latestEval.logical_validity) || "Pending"}</div>
+                      <div>- Real-world Fit: {safeText(latestEval.real_world_applicability) || "Pending"}</div>
+                    </div>
                     <div className="voice-ai-mini-list">
                       {safeTextList(latestEval.strengths).map((item) => <div key={item}>- {item}</div>)}
                       {safeTextList(latestEval.gaps).map((item) => <div key={item}>- {item}</div>)}
+                      {safeTextList(latestEval.suggestions).map((item) => <div key={item}>- Suggestion: {item}</div>)}
                     </div>
                   </div>
                 ) : null}

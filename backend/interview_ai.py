@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import random
 import re
 import time
 import urllib.error
@@ -17,6 +18,7 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip(
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b").strip()
 OLLAMA_TIMEOUT_SECONDS = max(30, int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "300")))
 LIVE_AI_TIMEOUT_SECONDS = max(8, int(os.getenv("LIVE_AI_TIMEOUT_SECONDS", "12")))
+STARTUP_AI_TIMEOUT_SECONDS = max(LIVE_AI_TIMEOUT_SECONDS, int(os.getenv("STARTUP_AI_TIMEOUT_SECONDS", "20")))
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
 
 INTERVIEW_SESSIONS: Dict[str, Dict[str, Any]] = {}
@@ -389,6 +391,59 @@ def _target_subject(payload: Dict[str, Any]) -> str:
     )
 
 
+def _build_interview_variation(payload: Dict[str, Any]) -> Dict[str, str]:
+    chooser = random.SystemRandom()
+    role = _normalize_text(payload.get("job_role") or payload.get("primary_language") or "the selected role")
+    return {
+        "seed": uuid.uuid4().hex[:10],
+        "opening_style": chooser.choice([
+            "warm but crisp technical screening",
+            "curious hands-on technical conversation",
+            "practical engineer-to-engineer discussion",
+            "focused real-world backend assessment",
+        ]),
+        "technical_lens": chooser.choice([
+            "debugging and troubleshooting",
+            "practical implementation details",
+            "real-world architecture and trade-offs",
+            "backend fundamentals with production thinking",
+            "API design and maintainability",
+            "performance, reliability, and scalability",
+        ]),
+        "scenario_lens": chooser.choice([
+            "a production incident",
+            "a feature launch under deadline pressure",
+            "a scaling bottleneck",
+            "a debugging-heavy support case",
+            "a maintainability refactor",
+        ]),
+        "follow_up_style": chooser.choice([
+            "go deeper after strong answers",
+            "simplify and clarify after weak answers",
+            "alternate between concept and example",
+            "mix direct questions with small scenarios",
+        ]),
+        "freshness_rule": (
+            f"Make this {role} interview feel fresh for seed {uuid.uuid4().hex[:6]} "
+            "and avoid reusing stock boilerplate wording."
+        ),
+    }
+
+
+def _variation_summary(variation: Optional[Dict[str, str]]) -> str:
+    data = variation or {}
+    return "\n".join(
+        [
+            f"Variation seed: {_normalize_text(data.get('seed') or 'default')}",
+            f"Opening style: {_normalize_text(data.get('opening_style') or 'standard technical interview')}",
+            f"Technical lens: {_normalize_text(data.get('technical_lens') or 'general technical depth')}",
+            f"Scenario lens: {_normalize_text(data.get('scenario_lens') or 'real-world backend scenario')}",
+            f"Follow-up style: {_normalize_text(data.get('follow_up_style') or 'balanced follow-up')}",
+            f"Freshness directive: {_normalize_text(data.get('freshness_rule') or 'Keep the interview wording fresh and non-repetitive.')}",
+        ]
+    )
+
+
 def _safe_question_type(value: Any) -> str:
     allowed = {
         "discovery",
@@ -418,6 +473,61 @@ def _match_role_profile(job_role: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _role_keyword_terms(job_role: str) -> List[str]:
+    role_text = _normalize_text(job_role).lower()
+    ignore = {
+        "developer", "engineer", "specialist", "associate", "intern", "trainee", "lead",
+        "manager", "architect", "consultant", "analyst", "staff", "principal", "junior",
+        "senior", "expert", "head", "full", "stack",
+    }
+    terms = []
+    for token in re.findall(r"[a-zA-Z0-9+#.]+", role_text):
+        if len(token) > 2 and token not in ignore and token not in terms:
+            terms.append(token)
+    return terms[:6]
+
+
+def _generic_role_focus(job_role: str, primary_language: str, selected_options: List[str]) -> Dict[str, List[str]]:
+    role_label = _normalize_text(job_role) or "Technical Role"
+    role_terms = _role_keyword_terms(role_label)
+    option_terms = _safe_list(selected_options)[:6]
+    tech_stack = _merge_unique([primary_language] if primary_language else [], option_terms)
+    tech_stack = _merge_unique(tech_stack, [term.title() for term in role_terms[:3]])
+
+    core_areas = []
+    if primary_language:
+        core_areas.append(f"{primary_language} fundamentals for {role_label}")
+    core_areas.extend(option_terms[:4])
+    core_areas.extend(
+        [
+            f"core responsibilities of a {role_label}",
+            f"real-world workflows in {role_label}",
+            f"debugging and troubleshooting for {role_label}",
+            f"design and trade-offs for {role_label}",
+            f"testing, reliability, or quality expectations for {role_label}",
+        ]
+    )
+    for term in role_terms[:3]:
+        core_areas.append(f"{term.title()} concepts relevant to {role_label}")
+
+    question_focus = [
+        f"Ask practical questions that mirror real {role_label} work",
+        f"Ask what tools, systems, or workflows a strong {role_label} candidate should know",
+        f"Ask debugging, design, trade-off, and implementation questions for {role_label}",
+        f"Ask scenario-based questions grounded in day-to-day {role_label} responsibilities",
+    ]
+    if primary_language:
+        question_focus.append(f"Ask how {primary_language} is used effectively in {role_label}")
+    for option in option_terms[:3]:
+        question_focus.append(f"Ask role-specific questions using {option}")
+
+    return {
+        "core_areas": list(dict.fromkeys(core_areas))[:8],
+        "question_focus": list(dict.fromkeys(question_focus))[:7],
+        "tech_stack": tech_stack[:6],
+    }
+
+
 def _fallback_role_blueprint(payload: Dict[str, Any]) -> Dict[str, Any]:
     job_role = _normalize_text(payload.get("job_role") or "")
     primary_language = _normalize_text(payload.get("primary_language") or "")
@@ -437,20 +547,22 @@ def _fallback_role_blueprint(payload: Dict[str, Any]) -> Dict[str, Any]:
     if primary_language:
         inferred_stack.append(primary_language)
     inferred_stack.extend(selected_options[:4])
-
-    core_areas = selected_options[:6] if selected_options else [
-        "programming fundamentals",
-        "core concepts",
-        "problem solving",
-        "debugging",
-        "system understanding",
-    ]
+    generic_focus = _generic_role_focus(job_role, primary_language, selected_options)
+    core_areas = generic_focus["core_areas"] or (
+        selected_options[:6] if selected_options else [
+            "programming fundamentals",
+            "core concepts",
+            "problem solving",
+            "debugging",
+            "system understanding",
+        ]
+    )
 
     return {
         "role_label": job_role or primary_language or "Technical Role",
         "core_areas": core_areas,
-        "tech_stack": inferred_stack,
-        "question_focus": [
+        "tech_stack": generic_focus["tech_stack"] or inferred_stack,
+        "question_focus": generic_focus["question_focus"] or [
             f"Ask technical fundamentals for {job_role or primary_language or 'the selected role'}",
             "Ask conceptual questions based on selected topics",
             "Ask practical implementation questions",
@@ -625,6 +737,8 @@ Rules:
 - Keep this technical only.
 - Do not include HR, behavioral, motivation, strengths, or self-introduction topics.
 - If the role suggests backend, frontend, full stack, data science, AI/ML, DevOps, QA, or security, infer the most relevant stacks and concepts automatically.
+- Support any technical job title, even if it is niche, uncommon, or not in a predefined list.
+- If the role is uncommon, infer the interview focus from the actual role title words, selected options, and language.
 - If selected options are provided, use them strongly.
 - If a language is provided, include it where relevant.
 - Avoid markdown.
@@ -635,6 +749,7 @@ Rules:
             prompt,
             ["gemini", "ollama"],
             0.2,
+            STARTUP_AI_TIMEOUT_SECONDS,
         )
         normalized = {
             "role_label": _normalize_text(blueprint.get("role_label") or fallback_blueprint["role_label"]),
@@ -648,7 +763,9 @@ Rules:
         return fallback_blueprint, "fallback"
 
 
-def _default_questions(payload: Dict[str, Any]) -> Dict[str, Any]:
+def _default_questions(payload: Dict[str, Any], variation: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    variation = variation or _build_interview_variation(payload)
+    shuffler = random.Random(_normalize_text(variation.get("seed") or "default"))
     role = payload.get("job_role") or "candidate"
     language = payload.get("primary_language")
     focus = payload.get("selected_options") or []
@@ -871,15 +988,21 @@ def _default_questions(payload: Dict[str, Any]) -> Dict[str, Any]:
             },
         ]
 
-    trimmed = base_questions[:question_count]
+    first_block = base_questions[:1]
+    remaining = base_questions[1:]
+    shuffler.shuffle(remaining)
+    trimmed = (first_block + remaining)[:question_count]
+    intro_style = _normalize_text(variation.get("opening_style") or "technical interview")
+    technical_lens = _normalize_text(variation.get("technical_lens") or "real-world engineering")
     return {
         "assistant_intro": (
             f"Hello, I am your AI interview assistant. "
+            f"This will be a {intro_style}. "
             f"I will ask you {len(trimmed)} {difficulty} questions tailored for "
             f"{language if selected_mode == 'language' and language else role}. "
             f"This interview is configured in {config_mode} mode"
             f"{f' for about {time_hint} minutes' if time_hint else ''}. "
-            "I will focus only on technical, conceptual, and fundamentals questions. Answer naturally and clearly."
+            f"Expect a fresh mix focused on {technical_lens}. Answer naturally and clearly."
         ),
         "questions": trimmed,
     }
@@ -898,6 +1021,68 @@ def _keyword_set(values: List[str]) -> List[str]:
             if len(token) > 2 and token not in stop_words:
                 tokens.append(token)
     return list(dict.fromkeys(tokens))
+
+
+def _normalize_enum_label(value: Any, allowed: List[str], fallback: str) -> str:
+    normalized = _normalize_text(str(value or ""))
+    if not normalized:
+        return fallback
+    lowered = normalized.lower()
+    for option in allowed:
+        if lowered == option.lower():
+            return option
+    for option in allowed:
+        option_lower = option.lower()
+        if lowered in option_lower or option_lower in lowered:
+            return option
+    return fallback
+
+
+def _normalize_evaluation_payload(evaluation: Dict[str, Any], fallback_defaults: Dict[str, Any]) -> Dict[str, Any]:
+    suggestions = _safe_list(evaluation.get("suggestions"))[:3] or _safe_list(fallback_defaults.get("suggestions"))[:3]
+    normalized = {
+        "score": int(evaluation.get("score", fallback_defaults["score"])),
+        "feedback": _normalize_text(evaluation.get("feedback") or fallback_defaults["feedback"]),
+        "strengths": _safe_list(evaluation.get("strengths"))[:3] or fallback_defaults["strengths"],
+        "gaps": _safe_list(evaluation.get("gaps"))[:3] or fallback_defaults["gaps"],
+        "matched_points": _safe_list(evaluation.get("matched_points"))[:4] or fallback_defaults["matched_points"],
+        "missed_points": _safe_list(evaluation.get("missed_points"))[:4] or fallback_defaults["missed_points"],
+        "suggested_answer": _normalize_text(evaluation.get("suggested_answer") or fallback_defaults["suggested_answer"]),
+        "assistant_reply": _normalize_text(evaluation.get("assistant_reply") or fallback_defaults["assistant_reply"]),
+        "relevance": _normalize_enum_label(
+            evaluation.get("relevance"),
+            ["Relevant", "Partially Relevant", "Not Relevant"],
+            fallback_defaults["relevance"],
+        ),
+        "correctness": _normalize_enum_label(
+            evaluation.get("correctness"),
+            ["Correct", "Partially Correct", "Incorrect"],
+            fallback_defaults["correctness"],
+        ),
+        "clarity": _normalize_enum_label(
+            evaluation.get("clarity"),
+            ["Clear", "Needs Improvement"],
+            fallback_defaults["clarity"],
+        ),
+        "technical_depth": _normalize_enum_label(
+            evaluation.get("technical_depth"),
+            ["Good", "Moderate", "Weak"],
+            fallback_defaults["technical_depth"],
+        ),
+        "logical_validity": _normalize_enum_label(
+            evaluation.get("logical_validity"),
+            ["Logical", "Partially Logical", "Illogical"],
+            fallback_defaults["logical_validity"],
+        ),
+        "real_world_applicability": _normalize_enum_label(
+            evaluation.get("real_world_applicability"),
+            ["Applicable", "Partially Applicable", "Not Applicable"],
+            fallback_defaults["real_world_applicability"],
+        ),
+        "suggestions": suggestions,
+    }
+    normalized["score"] = max(0, min(100, normalized["score"]))
+    return normalized
 
 
 def _heuristic_evaluation(question: Dict[str, Any], answer: str) -> Dict[str, Any]:
@@ -941,23 +1126,79 @@ def _heuristic_evaluation(question: Dict[str, Any], answer: str) -> Dict[str, An
         "and end with the result or lesson learned."
     )
 
+    word_count = len(answer_text.split())
+    project_markers = ("example", "project", "production", "real", "client", "api", "service", "system", "deployed")
+    has_real_world_marker = any(marker in answer_lower for marker in project_markers)
+    off_topic = bool(answer_text) and coverage < 0.12 and not matched_points
+
+    relevance = "Not Relevant" if off_topic else ("Partially Relevant" if coverage < 0.45 else "Relevant")
+    correctness = "Incorrect" if coverage < 0.18 else ("Partially Correct" if coverage < 0.65 else "Correct")
+    clarity = "Needs Improvement" if word_count < 16 else "Clear"
+    technical_depth = "Weak" if word_count < 18 or coverage < 0.25 else ("Moderate" if coverage < 0.7 else "Good")
+    logical_validity = "Illogical" if off_topic else ("Partially Logical" if coverage < 0.55 else "Logical")
+    real_world_applicability = (
+        "Applicable" if has_real_world_marker and coverage >= 0.45
+        else "Partially Applicable" if has_real_world_marker or coverage >= 0.28
+        else "Not Applicable"
+    )
+
+    topic_label = _normalize_text(question.get("topic_tag") or question.get("question_type") or "the topic")
+    suggestions = []
+    if off_topic:
+        suggestions.append(f"Focus directly on {topic_label} before adding extra context.")
+    if word_count < 16:
+        suggestions.append("Expand your answer with one concrete example or implementation detail.")
+    if missed_points:
+        suggestions.append("Cover the main expected points in a clearer order.")
+    if not has_real_world_marker:
+        suggestions.append("Tie your answer to a real project, trade-off, or production scenario.")
+    suggestions = suggestions[:3]
+
+    if off_topic:
+        assistant_reply = f"That is slightly off-topic. Let us focus on {topic_label}."
+    elif word_count < 10:
+        assistant_reply = "Can you expand on that?"
+    elif word_count < 18 or coverage < 0.28:
+        assistant_reply = "Can you be more specific?"
+    elif score >= 80:
+        assistant_reply = "Interesting. Let us explore that a little further."
+    else:
+        assistant_reply = "Alright, let us continue."
+
+    if not answer_text:
+        feedback = "I could not capture a clear answer. Please answer directly, stay on the topic, and add one real example."
+    elif off_topic:
+        feedback = (
+            f"Your response drifted away from {topic_label}. Start by answering the exact question, "
+            "then support it with one relevant technical example."
+        )
+    elif score >= 75:
+        feedback = (
+            "Your answer was relevant and mostly correct. To make it stronger, add one real-world trade-off "
+            "or production consideration."
+        )
+    else:
+        feedback = (
+            "Your answer has some relevant points, but it needs clearer structure, better technical precision, "
+            "and a more practical example."
+        )
+
     return {
         "score": score,
-        "feedback": (
-            "Solid start. Keep your response structured and connect your experience "
-            "more directly to the question."
-        ) if score >= 65 else (
-            "Your answer needs more role-relevant detail. Use a clear structure and "
-            "cover the main expected points."
-        ),
+        "feedback": feedback,
         "strengths": strengths[:3],
         "gaps": gaps[:3],
         "matched_points": matched_points[:4],
         "missed_points": missed_points[:4],
         "suggested_answer": suggested_answer,
-        "assistant_reply": (
-            "Thanks. Let’s move to the next question."
-        ),
+        "assistant_reply": assistant_reply,
+        "relevance": relevance,
+        "correctness": correctness,
+        "clarity": clarity,
+        "technical_depth": technical_depth,
+        "logical_validity": logical_validity,
+        "real_world_applicability": real_world_applicability,
+        "suggestions": suggestions,
     }
 
 
@@ -1083,16 +1324,23 @@ def _adaptive_intro(payload: Dict[str, Any], question_count: int) -> str:
     )
 
 
-def _adaptive_discovery_question(payload: Dict[str, Any]) -> str:
+def _adaptive_discovery_question(payload: Dict[str, Any], variation: Optional[Dict[str, str]] = None) -> str:
     role = _normalize_text(payload.get("job_role") or "this role")
     role_lower = role.lower()
+    shuffler = random.Random(_normalize_text((variation or {}).get("seed") or role or "adaptive"))
     if any(keyword in role_lower for keyword in ("backend", "full stack", "full-stack", "fullstack", "software engineer", "software developer")):
-        return (
-            f"To start, which backend languages, frameworks, databases, or tools are you most comfortable with for this {role} role?"
-        )
-    return (
-        f"To start, which languages, frameworks, tools, or technical areas are you most comfortable with for this {role} role?"
-    )
+        options = [
+            f"To start, which backend languages, frameworks, databases, or tools are you most comfortable with for this {role} role?",
+            f"Before we go deeper, which backend stack do you actually feel strongest with for this {role} role?",
+            f"To get the interview aligned properly, which backend technologies have you used most confidently in real work for this {role} role?",
+        ]
+    else:
+        options = [
+            f"To start, which languages, frameworks, tools, or technical areas are you most comfortable with for this {role} role?",
+            f"Before we dive in, which technical stack or problem areas would you like me to focus on first for this {role} role?",
+            f"To tailor this interview properly, which technologies or technical areas do you feel strongest with for this {role} role?",
+        ]
+    return shuffler.choice(options)
 
 
 def _build_adaptive_state(payload: Dict[str, Any], role_blueprint: Dict[str, Any], question_count: int) -> Dict[str, Any]:
@@ -1251,7 +1499,59 @@ def _fallback_stack_analysis(answer_text: str, payload: Dict[str, Any]) -> Dict[
 
 async def _analyze_discovery_answer(session: Dict[str, Any], answer_text: str) -> Tuple[Dict[str, Any], str]:
     payload = session.get("context", {})
-    return _fallback_stack_analysis(answer_text, payload), "fallback"
+    fallback = _fallback_stack_analysis(answer_text, payload)
+    prompt = f"""
+You are an experienced technical interviewer tailoring a live interview after the candidate's stack-discovery answer.
+
+Interview context:
+{_context_summary(payload)}
+
+Candidate discovery answer:
+{answer_text}
+
+Return valid JSON:
+{{
+  "preferred_language": "single preferred language if clearly stated, else empty string",
+  "languages": ["languages explicitly mentioned or strongly implied"],
+  "frameworks": ["frameworks explicitly mentioned or strongly implied"],
+  "databases": ["databases explicitly mentioned or strongly implied"],
+  "tools": ["tools, cloud, APIs, or infrastructure items explicitly mentioned or strongly implied"],
+  "focus_areas": ["the best interview focus areas to use next"],
+  "confidence_summary": "one short summary of the candidate's stack comfort",
+  "needs_clarification": false,
+  "clarification_question": "one short clarification question if needed, otherwise empty string",
+  "acknowledgement": "one short human-like acknowledgement before the next step"
+}}
+
+Rules:
+- Do not assume a language or framework unless the candidate clearly mentioned it or strongly implied it.
+- If the candidate mentions multiple backend languages without a preference, set needs_clarification to true.
+- If the answer is too vague, ask one short clarification question.
+- Keep acknowledgement natural and concise, like a real interviewer.
+- Avoid markdown.
+"""
+    try:
+        analysis, provider = await _generate_json_with_fallback(
+            prompt,
+            ["gemini", "ollama"],
+            0.2,
+            LIVE_AI_TIMEOUT_SECONDS,
+        )
+        normalized = {
+            "preferred_language": _normalize_text(analysis.get("preferred_language") or fallback["preferred_language"]),
+            "languages": _safe_list(analysis.get("languages")) or fallback["languages"],
+            "frameworks": _safe_list(analysis.get("frameworks")) or fallback["frameworks"],
+            "databases": _safe_list(analysis.get("databases")) or fallback["databases"],
+            "tools": _safe_list(analysis.get("tools")) or fallback["tools"],
+            "focus_areas": _safe_list(analysis.get("focus_areas")) or fallback["focus_areas"],
+            "confidence_summary": _normalize_text(analysis.get("confidence_summary") or fallback["confidence_summary"]),
+            "needs_clarification": bool(analysis.get("needs_clarification")) if "needs_clarification" in analysis else fallback["needs_clarification"],
+            "clarification_question": _normalize_text(analysis.get("clarification_question") or fallback["clarification_question"]),
+            "acknowledgement": _normalize_text(analysis.get("acknowledgement") or fallback["acknowledgement"]),
+        }
+        return normalized, provider
+    except ProviderError:
+        return fallback, "fallback"
 
 
 def _apply_discovery_analysis(state: Dict[str, Any], analysis: Dict[str, Any]) -> None:
@@ -1388,6 +1688,7 @@ async def _generate_adaptive_question(
     evaluation: Optional[Dict[str, Any]],
 ) -> Tuple[Dict[str, Any], str]:
     state = session.get("meta", {}).get("adaptive_state") or {}
+    variation = session.get("meta", {}).get("interview_variation") or {}
     desired_track = _next_adaptive_track(state)
     last_score = int((evaluation or {}).get("score") or 0)
     role = _normalize_text(session.get("context", {}).get("job_role") or "the selected role")
@@ -1411,6 +1712,8 @@ Recent turn:
 Remaining scored questions after the next turn: {max(0, int(state.get("scored_question_target", 0)) - int(state.get("scored_questions_answered", 0)) - 1)}
 Desired next track: {desired_track}
 Target role: {role}
+Session variation:
+{_variation_summary(variation)}
 
 Return valid JSON with this exact shape:
 {{
@@ -1426,6 +1729,7 @@ Rules:
 - Ask exactly one question.
 - Sound like a curious, calm, and supportive human interviewer.
 - Keep assistant_reply gentle, natural, and short, like a real interviewer speaking conversationally.
+- Make the wording feel fresh for this session instead of using stock repeated phrasing.
 - If desired next track is technical, do not ask HR, self-introduction, motivation, or strengths and weaknesses questions.
 - If desired next track is technical and the last score was below 55, ask a simpler follow-up or ask for a concrete example on the same stack.
 - If desired next track is technical and the last score was 80 or above, go one level deeper on the same topic or a closely related backend concern.
@@ -1461,6 +1765,82 @@ Rules:
         return question, provider
     except ProviderError:
         return _fallback_adaptive_question(session, last_question, evaluation, desired_track), "fallback"
+
+
+async def _generate_adaptive_opening_turn(
+    payload: Dict[str, Any],
+    role_blueprint: Dict[str, Any],
+    question_count: int,
+    variation: Optional[Dict[str, str]] = None,
+) -> Tuple[Dict[str, Any], str]:
+    variation = variation or _build_interview_variation(payload)
+    fallback = {
+        "assistant_intro": _adaptive_intro(payload, question_count),
+        "question": _adaptive_discovery_question(payload, variation),
+        "question_type": "discovery",
+        "expected_points": [
+            "languages the candidate knows",
+            "frameworks or backend tools used",
+            "preferred stack to focus on",
+        ],
+        "evaluation_focus": ["clarity", "stack identification", "specificity"],
+        "topic_tag": "stack discovery",
+    }
+    prompt = f"""
+You are a highly experienced technical interviewer conducting a real-time interview.
+
+Your behavior must be human-like, conversational, adaptive, and professional but friendly.
+
+Interview context:
+- Role: {_normalize_text(payload.get("job_role") or role_blueprint.get("role_label") or "the selected role")}
+- Candidate skills: {json.dumps(_safe_list(payload.get("selected_options") or []), ensure_ascii=False)}
+- Experience level: {_normalize_text(payload.get("experience") or "Not specified")}
+- Interview type: {_normalize_text(payload.get("category") or "technical")}
+- Inferred role blueprint: {json.dumps(role_blueprint, ensure_ascii=False)}
+Session variation:
+{_variation_summary(variation)}
+
+Return valid JSON:
+{{
+  "assistant_intro": "short natural greeting like a real interviewer",
+  "question": "exactly one opening discovery question",
+  "question_type": "discovery",
+  "expected_points": ["3 to 5 concise things the candidate should mention"],
+  "evaluation_focus": ["3 concise discovery criteria"],
+  "topic_tag": "stack discovery"
+}}
+
+Rules:
+- Start naturally like a human interviewer.
+- Ask only one question.
+- Do not assume the candidate's backend language or framework.
+- Ask the candidate which languages, frameworks, databases, or tools they are actually comfortable with.
+- Keep the intro concise and warm.
+- Make the wording fresh for this session and avoid stock repeated phrasing.
+- If this is a mock interview, you may lightly mention that a short behavioral section can appear later.
+- Keep the first question discovery-focused, not HR-focused.
+- Avoid markdown.
+"""
+    try:
+        opening, provider = await _generate_json_with_fallback(
+            prompt,
+            ["gemini", "ollama"],
+            0.35,
+            STARTUP_AI_TIMEOUT_SECONDS,
+        )
+        normalized = {
+            "assistant_intro": _normalize_text(opening.get("assistant_intro") or fallback["assistant_intro"]),
+            "question": _normalize_text(opening.get("question") or fallback["question"]),
+            "question_type": "discovery",
+            "expected_points": _safe_list(opening.get("expected_points"))[:5] or fallback["expected_points"],
+            "evaluation_focus": _safe_list(opening.get("evaluation_focus"))[:4] or fallback["evaluation_focus"],
+            "topic_tag": _normalize_text(opening.get("topic_tag") or fallback["topic_tag"]),
+        }
+        if not normalized["question"]:
+            raise ProviderError("Adaptive opening turn returned an empty question.")
+        return normalized, provider
+    except ProviderError:
+        return fallback, "fallback"
 
 
 def _register_scored_turn(state: Dict[str, Any], question: Dict[str, Any]) -> None:
@@ -1499,6 +1879,13 @@ def _record_turn_result(
         "missed_points": _safe_list(evaluation.get("missed_points"))[:4],
         "suggested_answer": _normalize_text(evaluation.get("suggested_answer") or ""),
         "assistant_reply": _normalize_text(evaluation.get("assistant_reply") or "Thank you. Let us continue."),
+        "relevance": _normalize_text(evaluation.get("relevance") or ""),
+        "correctness": _normalize_text(evaluation.get("correctness") or ""),
+        "clarity": _normalize_text(evaluation.get("clarity") or ""),
+        "technical_depth": _normalize_text(evaluation.get("technical_depth") or ""),
+        "logical_validity": _normalize_text(evaluation.get("logical_validity") or ""),
+        "real_world_applicability": _normalize_text(evaluation.get("real_world_applicability") or ""),
+        "suggestions": _safe_list(evaluation.get("suggestions"))[:3],
         "provider": provider_used,
         "count_towards_score": bool(question.get("count_towards_score", True)),
     }
@@ -1525,6 +1912,7 @@ def _record_turn_result(
             "current": question_index + 1,
             "total": _adaptive_total_questions(session),
         },
+        "providers": dict(session.get("providers", {})),
         "question_outline": session.get("question_outline", []),
     }
 
@@ -1543,12 +1931,15 @@ async def _create_adaptive_interview_session(
     difficulty: str,
     role_blueprint: Dict[str, Any],
     blueprint_provider: str,
+    variation: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     session_id = str(uuid.uuid4())
+    variation = variation or _build_interview_variation(payload)
     adaptive_state = _build_adaptive_state(payload, role_blueprint, question_count)
+    opening_turn, opening_provider = await _generate_adaptive_opening_turn(payload, role_blueprint, question_count, variation)
     provider_meta = {
-        "generation_provider": "fallback",
-        "evaluation_provider": "fallback",
+        "generation_provider": opening_provider,
+        "evaluation_provider": "",
         "analysis_provider": blueprint_provider,
     }
 
@@ -1556,7 +1947,7 @@ async def _create_adaptive_interview_session(
         "session_id": session_id,
         "created_at": time.time(),
         "context": payload,
-        "assistant_intro": _adaptive_intro(payload, question_count),
+        "assistant_intro": opening_turn["assistant_intro"],
         "questions": [],
         "answers": [],
         "evaluations": [],
@@ -1570,6 +1961,7 @@ async def _create_adaptive_interview_session(
             "selected_mode": payload.get("selected_mode"),
             "role_blueprint": role_blueprint,
             "adaptive_state": adaptive_state,
+            "interview_variation": variation,
         },
         "question_outline": [],
     }
@@ -1577,16 +1969,12 @@ async def _create_adaptive_interview_session(
     first_question = _append_session_question(
         session,
         {
-            "question": _adaptive_discovery_question(payload),
-            "question_type": "discovery",
-            "expected_points": [
-                "languages the candidate knows",
-                "frameworks or backend tools used",
-                "preferred stack to focus on",
-            ],
-            "evaluation_focus": ["clarity", "stack identification", "specificity"],
+            "question": opening_turn["question"],
+            "question_type": opening_turn["question_type"],
+            "expected_points": opening_turn["expected_points"],
+            "evaluation_focus": opening_turn["evaluation_focus"],
             "count_towards_score": False,
-            "topic_tag": "stack discovery",
+            "topic_tag": opening_turn["topic_tag"],
         },
     )
 
@@ -1641,6 +2029,17 @@ async def _evaluate_adaptive_interview_answer(
             "missed_points": [],
             "suggested_answer": "Discovery turns are used only to tailor the interview and do not affect scoring.",
             "assistant_reply": acknowledgement,
+            "relevance": "Relevant",
+            "correctness": "Correct",
+            "clarity": "Needs Improvement" if analysis.get("needs_clarification") else "Clear",
+            "technical_depth": "Moderate" if matched_points else "Weak",
+            "logical_validity": "Logical",
+            "real_world_applicability": "Applicable" if matched_points else "Partially Applicable",
+            "suggestions": (
+                ["Mention the exact language or framework you want me to focus on first."]
+                if analysis.get("needs_clarification")
+                else ["Keep later answers tied to the stack you just selected."]
+            ),
         }
 
         next_question = None
@@ -1667,8 +2066,17 @@ async def _evaluate_adaptive_interview_answer(
             )
         else:
             state["discovery_complete"] = True
-            generated_question = _fallback_adaptive_question(session, question, {"score": 40}, "technical")
-            provider = "fallback"
+            discovery_transition = {
+                "score": 70 if matched_points else 55,
+                "feedback": evaluation["feedback"],
+                "gaps": evaluation["gaps"],
+            }
+            generated_question, provider = await _generate_adaptive_question(
+                session,
+                question,
+                answer_text,
+                discovery_transition,
+            )
             session["providers"]["generation_provider"] = provider
             evaluation["assistant_reply"] = _normalize_text(
                 generated_question.get("assistant_reply") or acknowledgement
@@ -1720,10 +2128,17 @@ Return valid JSON:
 {{
   "score": 0,
   "feedback": "2 to 4 sentence evaluation",
+  "relevance": "Relevant | Partially Relevant | Not Relevant",
+  "correctness": "Correct | Partially Correct | Incorrect",
+  "clarity": "Clear | Needs Improvement",
+  "technical_depth": "Good | Moderate | Weak",
+  "logical_validity": "Logical | Partially Logical | Illogical",
+  "real_world_applicability": "Applicable | Partially Applicable | Not Applicable",
   "strengths": ["up to 3 concise strengths"],
   "gaps": ["up to 3 concise gaps"],
   "matched_points": ["expected points that were covered"],
   "missed_points": ["expected points that were not covered"],
+  "suggestions": ["up to 3 concise ways to improve"],
   "suggested_answer": "short improved answer guidance",
   "assistant_reply": "one short warm spoken response before the next question"
 }}
@@ -1732,6 +2147,10 @@ Rules:
 - Evaluate approximately, not by exact wording.
 - Reward relevant meaning even if phrasing is imperfect.
 - Be practical and interview-focused.
+- If the answer is off-topic, say so gently and redirect to the topic.
+- If the answer is vague, ask for more specificity.
+- If the answer is too short, ask the candidate to expand on it.
+- If the answer contains incorrect assumptions, correct them briefly but politely.
 - Do not use markdown.
 """
 
@@ -1750,16 +2169,7 @@ Rules:
     session["providers"]["evaluation_provider"] = provider_used
     if provider_used != "fallback":
         heuristic_defaults = _heuristic_evaluation(question, answer_text)
-        evaluation = {
-            "score": int(evaluation.get("score", heuristic_defaults["score"])),
-            "feedback": _normalize_text(evaluation.get("feedback") or heuristic_defaults["feedback"]),
-            "strengths": _safe_list(evaluation.get("strengths")) or heuristic_defaults["strengths"],
-            "gaps": _safe_list(evaluation.get("gaps")) or heuristic_defaults["gaps"],
-            "matched_points": _safe_list(evaluation.get("matched_points")) or heuristic_defaults["matched_points"],
-            "missed_points": _safe_list(evaluation.get("missed_points")) or heuristic_defaults["missed_points"],
-            "suggested_answer": _normalize_text(evaluation.get("suggested_answer") or heuristic_defaults["suggested_answer"]),
-            "assistant_reply": _normalize_text(evaluation.get("assistant_reply") or "Thanks. Let’s continue."),
-        }
+        evaluation = _normalize_evaluation_payload(evaluation, heuristic_defaults)
 
     _register_scored_turn(state, question)
     if int(state.get("scored_questions_answered", 0)) >= int(state.get("scored_question_target", 0)):
@@ -1808,17 +2218,19 @@ Rules:
 async def create_interview_session(payload: Dict[str, Any]) -> Dict[str, Any]:
     question_count = _resolve_question_count(payload)
     payload = {**payload, "question_count": question_count}
+    interview_variation = _build_interview_variation(payload)
     difficulty = _difficulty_from_experience(payload.get("experience") or "")
     target_subject = payload.get("primary_language") if payload.get("selected_mode") == "language" else payload.get("job_role")
     target_subject = target_subject or payload.get("job_role") or payload.get("primary_language") or "the selected interview focus"
     if _adaptive_role_interview_enabled(payload):
-        role_blueprint = _fallback_role_blueprint(payload)
+        role_blueprint, blueprint_provider = await _infer_role_blueprint(payload)
         return await _create_adaptive_interview_session(
             payload,
             question_count,
             difficulty,
             role_blueprint,
-            "fallback",
+            blueprint_provider,
+            interview_variation,
         )
     role_profile = _match_role_profile(payload.get("job_role") or "")
     role_blueprint, blueprint_provider = await _infer_role_blueprint(payload)
@@ -1844,6 +2256,8 @@ Interview context:
 {_context_summary(payload)}
 {role_profile_summary}
 {role_blueprint_summary}
+Session variation:
+{_variation_summary(interview_variation)}
 
 Return valid JSON with this exact shape:
 {{
@@ -1870,11 +2284,14 @@ Rules:
 - If selected mode is role-based, ask role-oriented questions.
 - If selected mode is language-based, ask language-oriented questions with practical coding or engineering emphasis where relevant.
 - If a job role matches a known technical role profile, ask from that role's core tech stack and concepts only.
+- If the job role is not a known profile, still generate role-specific questions using the role title, selected options, language, and inferred responsibilities.
 - Do not ask HR questions, self-introduction questions, motivation questions, strengths/weaknesses questions, or behavioral questions.
 - Prefer technical fundamentals, conceptual understanding, implementation questions, architecture questions, debugging questions, APIs, databases, networking, operating systems, cloud, testing, or security depending on the selected job role.
 - If configuration mode is time mode, make the question set fit naturally within the selected time interval.
 - If practice type is interview mode, keep questions realistic and progressively challenging.
 - Keep expected_points practical enough to support approximate answer evaluation.
+- Make this question set feel fresh for this session instead of repeating stock wording.
+- Vary the angles across fundamentals, debugging, design, trade-offs, and practical examples when relevant.
 - Avoid markdown.
 """
 
@@ -1884,10 +2301,11 @@ Rules:
             prompt,
             ["gemini", "ollama"],
             0.3,
+            STARTUP_AI_TIMEOUT_SECONDS,
         )
         provider_meta["generation_provider"] = provider
     except ProviderError:
-        blueprint = _default_questions(payload)
+        blueprint = _default_questions(payload, interview_variation)
 
     assistant_intro = _normalize_text(blueprint.get("assistant_intro") or "")
     if not assistant_intro:
@@ -1911,7 +2329,7 @@ Rules:
     questions = questions[:question_count]
 
     if not questions:
-        fallback = _default_questions(payload)
+        fallback = _default_questions(payload, interview_variation)
         assistant_intro = fallback["assistant_intro"]
         questions = [
             {
@@ -1942,6 +2360,7 @@ Rules:
             "time_mode_interval": payload.get("time_mode_interval"),
             "selected_mode": payload.get("selected_mode"),
             "role_blueprint": role_blueprint,
+            "interview_variation": interview_variation,
         },
         "question_outline": [
             {
@@ -2017,10 +2436,17 @@ Return valid JSON:
 {{
   "score": 0,
   "feedback": "2 to 4 sentence evaluation",
+  "relevance": "Relevant | Partially Relevant | Not Relevant",
+  "correctness": "Correct | Partially Correct | Incorrect",
+  "clarity": "Clear | Needs Improvement",
+  "technical_depth": "Good | Moderate | Weak",
+  "logical_validity": "Logical | Partially Logical | Illogical",
+  "real_world_applicability": "Applicable | Partially Applicable | Not Applicable",
   "strengths": ["up to 3 concise strengths"],
   "gaps": ["up to 3 concise gaps"],
   "matched_points": ["expected points that were covered"],
   "missed_points": ["expected points that were not covered"],
+  "suggestions": ["up to 3 concise ways to improve"],
   "suggested_answer": "short improved answer guidance",
   "assistant_reply": "one short spoken response before the next question"
 }}
@@ -2029,6 +2455,10 @@ Rules:
 - Evaluate approximately, not by exact wording.
 - Reward relevant meaning even if phrasing is imperfect.
 - Be practical and interview-focused.
+- If the answer is off-topic, say so gently and redirect to the topic.
+- If the answer is vague, ask for more specificity.
+- If the answer is too short, ask the candidate to expand on it.
+- If the answer contains incorrect assumptions, correct them briefly but politely.
 - Do not use markdown.
 """
 
@@ -2048,16 +2478,7 @@ Rules:
 
     if provider_used != "fallback":
         heuristic_defaults = _heuristic_evaluation(question, answer_text)
-        evaluation = {
-            "score": int(evaluation.get("score", heuristic_defaults["score"])),
-            "feedback": _normalize_text(evaluation.get("feedback") or heuristic_defaults["feedback"]),
-            "strengths": _safe_list(evaluation.get("strengths")) or heuristic_defaults["strengths"],
-            "gaps": _safe_list(evaluation.get("gaps")) or heuristic_defaults["gaps"],
-            "matched_points": _safe_list(evaluation.get("matched_points")) or heuristic_defaults["matched_points"],
-            "missed_points": _safe_list(evaluation.get("missed_points")) or heuristic_defaults["missed_points"],
-            "suggested_answer": _normalize_text(evaluation.get("suggested_answer") or heuristic_defaults["suggested_answer"]),
-            "assistant_reply": _normalize_text(evaluation.get("assistant_reply") or "Thank you. Let us continue."),
-        }
+        evaluation = _normalize_evaluation_payload(evaluation, heuristic_defaults)
 
     result = {
         "question_id": question["id"],
@@ -2072,6 +2493,13 @@ Rules:
         "missed_points": evaluation["missed_points"][:4],
         "suggested_answer": evaluation["suggested_answer"],
         "assistant_reply": evaluation["assistant_reply"],
+        "relevance": evaluation["relevance"],
+        "correctness": evaluation["correctness"],
+        "clarity": evaluation["clarity"],
+        "technical_depth": evaluation["technical_depth"],
+        "logical_validity": evaluation["logical_validity"],
+        "real_world_applicability": evaluation["real_world_applicability"],
+        "suggestions": evaluation["suggestions"][:3],
         "provider": provider_used,
     }
 
@@ -2098,6 +2526,7 @@ Rules:
         "is_complete": is_complete,
         "next_question": next_question,
         "next_question_type": next_question_type,
+        "providers": dict(session.get("providers", {})),
         "progress": {
             "current": question_index + 1,
             "total": len(questions),

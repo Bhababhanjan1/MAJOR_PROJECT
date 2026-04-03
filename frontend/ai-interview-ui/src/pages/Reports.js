@@ -557,6 +557,29 @@ function Reports() {
                           </div>
                         </div>
                       </div>
+
+                      <div className="report-question-grid">
+                        <div className="report-mini-panel">
+                          <span>Structured feedback</span>
+                          <div className="report-bullet-list">
+                            <div>- Relevance: {safeText(item.relevance) || "Pending"}</div>
+                            <div>- Correctness: {safeText(item.correctness) || "Pending"}</div>
+                            <div>- Clarity: {safeText(item.clarity) || "Pending"}</div>
+                            <div>- Technical Depth: {safeText(item.technical_depth) || "Pending"}</div>
+                            <div>- Logic: {safeText(item.logical_validity) || "Pending"}</div>
+                            <div>- Real-world Fit: {safeText(item.real_world_applicability) || "Pending"}</div>
+                          </div>
+                        </div>
+
+                        <div className="report-mini-panel">
+                          <span>Suggestions</span>
+                          <div className="report-bullet-list">
+                            {(item.suggestions || []).length
+                              ? (item.suggestions || []).map((entry) => <div key={entry}>- {entry}</div>)
+                              : <div>- No specific improvement suggestions were returned.</div>}
+                          </div>
+                        </div>
+                      </div>
                     </article>
                   ))}
                 </div>
