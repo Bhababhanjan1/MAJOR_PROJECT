@@ -1,11 +1,126 @@
 ﻿import React from "react";
 import { useNavigate } from "react-router-dom";
+import { BrainCircuit, BriefcaseBusiness, Code2, FileSearch, Mic2, Sigma } from "lucide-react";
 import "../App.css";
 import Navbar from "../components/Navbar";
+
+const howItWorksSteps = [
+  {
+    step: "01",
+    title: "Choose your interview track",
+    description:
+      "Pick HR, technical, mock, aptitude, or resume-based practice depending on the role you want to target.",
+    accent: "cyan",
+    bullets: ["Role-based paths", "Fast topic selection", "Beginner to advanced"],
+  },
+  {
+    step: "02",
+    title: "Practice with realistic prompts",
+    description:
+      "Answer guided questions in a focused flow that feels like a real interview instead of a static form.",
+    accent: "violet",
+    bullets: ["Voice or typed answers", "Structured question flow", "Focused practice mode"],
+  },
+  {
+    step: "03",
+    title: "Get AI feedback instantly",
+    description:
+      "See strengths, weak spots, and improvement hints right after each round so you can correct faster.",
+    accent: "amber",
+    bullets: ["Immediate scoring", "Actionable tips", "Performance signals"],
+  },
+  {
+    step: "04",
+    title: "Track progress and improve",
+    description:
+      "Use your dashboard and reports to compare sessions, improve consistency, and build confidence over time.",
+    accent: "emerald",
+    bullets: ["Progress history", "Confidence building", "Smarter revision"],
+  },
+];
+
+const benefits = [
+  {
+    stat: "24/7",
+    title: "Practice on your schedule",
+    description: "Train anytime without waiting for a coach or a live mock session.",
+  },
+  {
+    stat: "Real",
+    title: "Interview-like experience",
+    description: "Build comfort with realistic flows so the actual round feels familiar.",
+  },
+  {
+    stat: "AI",
+    title: "Personalized improvement",
+    description: "Get feedback tailored to your answers, pacing, and communication quality.",
+  },
+  {
+    stat: "Growth",
+    title: "Visible progress over time",
+    description: "Review reports and performance trends to measure how much you improve.",
+  },
+  {
+    stat: "Roles",
+    title: "Built for multiple interview types",
+    description: "Prepare for HR, technical, resume-based, mock, and aptitude rounds in one place.",
+  },
+  {
+    stat: "Reports",
+    title: "Structured performance reports",
+    description: "Use analytics and session summaries to revise smarter before your real interview.",
+  },
+];
+
+const features = [
+  {
+    badge: "Mock",
+    title: "AI Mock Interviews",
+    description: "Practice role-focused interviews with an AI flow that feels structured and realistic.",
+    accent: "cyan",
+    tags: ["Scenario based", "Adaptive prompts"],
+  },
+  {
+    badge: "Analytics",
+    title: "Performance Dashboard",
+    description: "Review scores, progress signals, and trends to understand where your interview skills are improving.",
+    accent: "blue",
+    tags: ["Reports", "Progress tracking"],
+  },
+  {
+    badge: "Feedback",
+    title: "Smart Improvement Tips",
+    description: "Receive guidance on clarity, confidence, structure, and delivery after each round.",
+    accent: "amber",
+    tags: ["Actionable", "Personalized"],
+  },
+  {
+    badge: "Resume",
+    title: "Resume-Based Practice",
+    description: "Upload your resume and prepare with questions tailored to your background and chosen role.",
+    accent: "violet",
+    tags: ["Resume aware", "Role aligned"],
+  },
+  {
+    badge: "Voice",
+    title: "Voice Interview Experience",
+    description: "Simulate spoken interview rounds with an experience designed to feel closer to real conversation.",
+    accent: "emerald",
+    tags: ["Speaking practice", "Natural flow"],
+  },
+  {
+    badge: "Coverage",
+    title: "Multi-Format Preparation",
+    description: "Switch between HR, technical, aptitude, mock, and resume interview modes in one platform.",
+    accent: "rose",
+    tags: ["All-in-one", "Flexible prep"],
+  },
+];
 
 function Home() {
   const navigate = useNavigate();
   const [typedName, setTypedName] = React.useState("");
+  const [activeStep, setActiveStep] = React.useState(0);
   const [storedUser, setStoredUser] = React.useState(() => {
     try {
       return JSON.parse(localStorage.getItem("user"));
@@ -98,6 +213,22 @@ function Home() {
     return () => window.clearTimeout(timeoutId);
   }, [storedUser, userFirstName]);
 
+  React.useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setActiveStep((current) => (current + 1) % howItWorksSteps.length);
+    }, 4200);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  const goToPreviousStep = () => {
+    setActiveStep((current) => (current - 1 + howItWorksSteps.length) % howItWorksSteps.length);
+  };
+
+  const goToNextStep = () => {
+    setActiveStep((current) => (current + 1) % howItWorksSteps.length);
+  };
+
   return (
     <>
       <Navbar />
@@ -112,7 +243,11 @@ function Home() {
               <span className="hero-greeting-cursor" aria-hidden="true" />
             </div>
           )}
-          <h1>Practice. Improve. Land the Job.</h1>
+          <h1>
+            Practice. Improve.
+            <br />
+            Land the Job.
+          </h1>
           <p>
             APIS helps you prepare for interviews with AI-driven feedback and
             realistic mock interviews — all in one polished experience.
@@ -131,8 +266,7 @@ function Home() {
         </div>
 
         <div>
-          {/* simple illustrative SVG */}
-          <svg className="mock-hero-img" viewBox="0 0 600 400" xmlns="http://www.w3.org/2000/svg">
+          <svg className="mock-hero-img" viewBox="0 0 600 400" xmlns="http://www.w3.org/2000/svg" aria-label="Interview preparation illustration">
             <defs>
               <linearGradient id="g1" x1="0" x2="1">
                 <stop offset="0" stopColor="#fff" stopOpacity="0.18" />
@@ -190,7 +324,7 @@ function Home() {
             className="category-card category-hr"
             onClick={() => navigate("/hr-interview")}
           >
-            <div className="category-icon"><span role="img" aria-label="HR">💬</span></div>
+            <div className="category-icon"><BriefcaseBusiness size={30} strokeWidth={2.1} aria-label="HR" /></div>
             <h3>HR Interview</h3>
             <p>Communication & personality questions</p>
           </div>
@@ -199,7 +333,7 @@ function Home() {
             className="category-card category-tech"
             onClick={() => navigate("/technical-interview")}
           >
-            <div className="category-icon"><span role="img" aria-label="Tech">💻</span></div>
+            <div className="category-icon"><Code2 size={30} strokeWidth={2.1} aria-label="Tech" /></div>
             <h3>Technical Interview</h3>
             <p>Programming & technical concepts</p>
           </div>
@@ -208,7 +342,7 @@ function Home() {
             className="category-card category-beh"
             onClick={() => navigate("/hr-interview")}
           >
-            <div className="category-icon"><span role="img" aria-label="Behavioral">🧠</span></div>
+            <div className="category-icon"><BrainCircuit size={30} strokeWidth={2.1} aria-label="Behavioral" /></div>
             <h3>Behavioral Interview</h3>
             <p>Situational & leadership questions</p>
           </div>
@@ -217,7 +351,7 @@ function Home() {
             className="category-card category-resume"
             onClick={() => navigate("/resume-interview")}
           >
-            <div className="category-icon"><span role="img" aria-label="Resume">📄</span></div>
+            <div className="category-icon"><FileSearch size={30} strokeWidth={2.1} aria-label="Resume" /></div>
             <h3>Resume Interview</h3>
             <p>Upload resume and choose role</p>
           </div>
@@ -226,7 +360,7 @@ function Home() {
             className="category-card category-mock"
             onClick={() => navigate("/mock-interview")}
           >
-            <div className="category-icon"><span role="img" aria-label="Mock">🎤</span></div>
+            <div className="category-icon"><Mic2 size={30} strokeWidth={2.1} aria-label="Mock" /></div>
             <h3>Mock Interview</h3>
             <p>Simulated interview experience with feedback.</p>
           </div>
@@ -235,7 +369,7 @@ function Home() {
             className="category-card category-aptitude"
             onClick={() => navigate("/aptitude-test")}
           >
-            <div className="category-icon"><span role="img" aria-label="Aptitude">🧮</span></div>
+            <div className="category-icon"><Sigma size={30} strokeWidth={2.1} aria-label="Aptitude" /></div>
             <h3>Aptitude Test</h3>
             <p>Logical, quantitative, and verbal skills assessment.</p>
           </div>
@@ -244,93 +378,155 @@ function Home() {
 
       {/* FEATURES */}
       <div className="mock-section reveal" style={{ padding: "50px 0" }}>
-        <div className="section-title">⚡ Features</div>
-        <div className="mock-grid">
-          <div className="mock-card">
-            <div className="card-top">
-              <div>
-                <h4>🤖 AI Mock Interviews</h4>
-                <p style={{ marginTop: 6 }}>Practice real interview questions with AI scoring and feedback.</p>
+        <div className="section-heading section-heading-centered">
+          <span className="section-heading-badge">Core Experience</span>
+          <h2 className="section-heading-title section-heading-title-glow">Features</h2>
+          <p className="section-heading-copy">
+            Explore the key tools inside APIS that help you practice smarter and improve faster.
+          </p>
+        </div>
+        <div className="feature-grid">
+          {features.map((item, index) => (
+            <article key={item.title} className={`feature-card feature-card-${item.accent} feature-card-layout-${(index % 3) + 1}`}>
+              <div className="feature-card-top">
+                <span className="feature-card-badge">{item.badge}</span>
+                <div className="feature-card-miniindex">0{index + 1}</div>
               </div>
-            </div>
-          </div>
 
-          <div className="mock-card">
-            <div className="card-top">
-              <div>
-                <h4>📊 Performance Analytics</h4>
-                <p style={{ marginTop: 6 }}>Track your progress with charts, scores, and trend insights.</p>
+              <div className="feature-card-visual" aria-hidden="true">
+                <span className="feature-visual-orb feature-visual-orb-one" />
+                <span className="feature-visual-orb feature-visual-orb-two" />
+                <div className="feature-visual-screen">
+                  <div className="feature-visual-screen-top">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                  <div className="feature-visual-screen-body">
+                    <div className="feature-visual-line feature-visual-line-lg" />
+                    <div className="feature-visual-line feature-visual-line-md" />
+                    <div className="feature-visual-metrics">
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
 
-          <div className="mock-card">
-            <div className="card-top">
-              <div>
-                <h4>🧠 Smart Feedback</h4>
-                <p style={{ marginTop: 6 }}>Get actionable tips on confidence, structure, and delivery.</p>
+              <div className="feature-card-copy">
+                <h3>{item.title}</h3>
+                <p>{item.description}</p>
+                <div className="feature-card-tags">
+                  {item.tags.map((tag) => (
+                    <span key={tag}>{tag}</span>
+                  ))}
+                </div>
               </div>
-            </div>
-          </div>
-
-          <div className="mock-card">
-            <div className="card-top">
-              <div>
-                <h4>📄 Resume Analysis</h4>
-                <p style={{ marginTop: 6 }}>Upload your resume and receive improvement suggestions.</p>
-              </div>
-            </div>
-          </div>
+            </article>
+          ))}
         </div>
       </div>
 
       {/* HOW IT WORKS */}
-      <div className="mock-section reveal" style={{ background: "#fff", padding: "50px 0" }}>
-        <div className="section-title">🎥 How It Works</div>
-        <div style={{ maxWidth: 900, margin: "0 auto" }}>
-          <div style={{ display: "grid", gap: 14, paddingTop: 16 }}>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-              <div style={{ fontSize: 22, fontWeight: 700 }}>1.</div>
-              <div>
-                <strong>Choose interview type</strong>
-                <div style={{ color: "#555" }}>Pick HR, Technical, Behavioral, Resume review and more.</div>
-              </div>
+      <div className="mock-section how-it-works-section reveal">
+        <div className="section-heading section-heading-centered">
+          <span className="section-heading-badge">Guided Journey</span>
+          <h2 className="section-heading-title section-heading-title-glow">How It Works</h2>
+          <p className="section-heading-copy">
+            A smooth interview prep flow that keeps every step focused, visual, and easy to follow.
+          </p>
+        </div>
+        <div className="how-it-works-shell">
+          <div className="how-it-works-head">
+            <div>
+              <span className="how-it-works-kicker">Guided journey</span>
             </div>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-              <div style={{ fontSize: 22, fontWeight: 700 }}>2.</div>
-              <div>
-                <strong>Answer questions</strong>
-                <div style={{ color: "#555" }}>Speak or type responses to realistic prompts.</div>
-              </div>
+            <div className="how-it-works-progress">
+              {howItWorksSteps.map((item, index) => (
+                <button
+                  key={item.step}
+                  type="button"
+                  className={`how-it-works-dot ${index === activeStep ? "active" : ""}`}
+                  onClick={() => setActiveStep(index)}
+                  aria-label={`Show step ${item.step}`}
+                />
+              ))}
             </div>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-              <div style={{ fontSize: 22, fontWeight: 700 }}>3.</div>
-              <div>
-                <strong>Get AI feedback</strong>
-                <div style={{ color: "#555" }}>Receive scoring, pacing, and strength/weakness analysis.</div>
-              </div>
+          </div>
+
+          <div className="how-it-works-carousel">
+            <div
+              className="how-it-works-track"
+              style={{ transform: `translateX(-${activeStep * 100}%)` }}
+            >
+              {howItWorksSteps.map((item) => (
+                <article key={item.step} className={`how-it-works-card accent-${item.accent}`}>
+                  <div className="how-it-works-visual">
+                    <div className="how-it-works-placeholder">
+                      <div className="how-it-works-placeholder-top">
+                        <span />
+                        <span />
+                        <span />
+                      </div>
+                      <div className="how-it-works-placeholder-main">
+                        <div className="how-it-works-placeholder-chart" />
+                        <div className="how-it-works-placeholder-stack">
+                          <span />
+                          <span />
+                          <span />
+                        </div>
+                      </div>
+                      <div className="how-it-works-placeholder-footer">
+                        <span />
+                        <span />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="how-it-works-copy">
+                    <div className="how-it-works-stepno">Step {item.step}</div>
+                    <h4>{item.title}</h4>
+                    <p>{item.description}</p>
+                    <div className="how-it-works-tags">
+                      {item.bullets.map((bullet) => (
+                        <span key={bullet}>{bullet}</span>
+                      ))}
+                    </div>
+                  </div>
+                </article>
+              ))}
             </div>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-              <div style={{ fontSize: 22, fontWeight: 700 }}>4.</div>
-              <div>
-                <strong>Improve & track progress</strong>
-                <div style={{ color: "#555" }}>Use your dashboard to compare past sessions and level up.</div>
-              </div>
-            </div>
+          </div>
+
+          <div className="how-it-works-controls">
+            <button type="button" className="how-it-works-nav" onClick={goToPreviousStep}>
+              Previous
+            </button>
+            <button type="button" className="how-it-works-nav how-it-works-nav-primary" onClick={goToNextStep}>
+              Next
+            </button>
           </div>
         </div>
       </div>
 
       {/* BENEFITS */}
-      <div className="mock-section reveal" style={{ padding: "50px 0" }}>
-        <div className="section-title">📊 Benefits / Why Use It</div>
-        <div style={{ maxWidth: 900, margin: "0 auto" }}>
-          <ul style={{ listStyle: "none", padding: 0, marginTop: 16, color: "#333" }}>
-            <li style={{ marginBottom: 12 }}>✅ Practice anytime, anywhere.</li>
-            <li style={{ marginBottom: 12 }}>✅ Real interview simulation you can revisit.</li>
-            <li style={{ marginBottom: 12 }}>✅ Personalized feedback that helps you improve.</li>
-            <li style={{ marginBottom: 12 }}>✅ Build confidence and track your progress with your dashboard.</li>
-          </ul>
+      <div className="mock-section benefits-section reveal">
+        <div className="section-heading section-heading-centered">
+          <span className="section-heading-badge">Why APIS</span>
+          <h2 className="section-heading-title section-heading-title-glow">Benefits / Why Use It</h2>
+          <p className="section-heading-copy">
+            Everything in the platform is designed to help you practice faster, improve clearly, and walk into interviews with more confidence.
+          </p>
+        </div>
+        <div className="benefits-shell">
+          {benefits.map((item, index) => (
+            <article key={item.title} className={`benefit-card benefit-card-${(index % 3) + 1}`}>
+              <div className="benefit-card-stat">{item.stat}</div>
+              <h3>{item.title}</h3>
+              <p>{item.description}</p>
+            </article>
+          ))}
         </div>
       </div>
 

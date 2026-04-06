@@ -13,7 +13,12 @@ if not MONGO_URL:
     raise Exception("MONGO_URL not found in .env file")
 
 # ---------------- CONNECT DB ----------------
-client = AsyncIOMotorClient(MONGO_URL)
+client = AsyncIOMotorClient(
+    MONGO_URL,
+    serverSelectionTimeoutMS=5000,
+    connectTimeoutMS=5000,
+    socketTimeoutMS=10000,
+)
 db = client["apis_db"]
 
 # ---------------- COLLECTIONS ----------------

@@ -11,6 +11,8 @@ import VoiceInterview from "./pages/VoiceInterview";
 import EditProfile from "./pages/EditProfile";
 import Topics from "./pages/Topics";
 import DashboardPage from "./pages/DashboardPage";
+import ResumeAnalyzer from "./pages/ResumeAnalyzer";
+import ResumeAnalyzerResults from "./pages/ResumeAnalyzerResults";
 import ResumeInterview from "./pages/ResumeInterview";
 import AboutUs from "./pages/AboutUs";
 import Reports from "./pages/Reports";
@@ -28,6 +30,14 @@ function ScrollRevealManager() {
   const location = useLocation();
 
   useEffect(() => {
+    const observeRevealElements = (observer) => {
+      document.querySelectorAll(".reveal").forEach((el) => {
+        if (!el.classList.contains("visible")) {
+          observer.observe(el);
+        }
+      });
+    };
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -40,9 +50,21 @@ function ScrollRevealManager() {
       { threshold: 0.2 }
     );
 
-    document.querySelectorAll(".reveal").forEach((el) => observer.observe(el));
+    observeRevealElements(observer);
 
-    return () => observer.disconnect();
+    const mutationObserver = new MutationObserver(() => {
+      observeRevealElements(observer);
+    });
+
+    mutationObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
+    return () => {
+      mutationObserver.disconnect();
+      observer.disconnect();
+    };
   }, [location.pathname]);
 
   return null;
@@ -155,6 +177,24 @@ function App() {
           element={
             <ProtectedRoute>
               <Reports />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/resume-analyzer"
+          element={
+            <ProtectedRoute>
+              <ResumeAnalyzer />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/resume-analyzer/results"
+          element={
+            <ProtectedRoute>
+              <ResumeAnalyzerResults />
             </ProtectedRoute>
           }
         />

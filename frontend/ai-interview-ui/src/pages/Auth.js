@@ -8,6 +8,8 @@ const api = axios.create({
   baseURL: process.env.REACT_APP_API_BASE || "http://127.0.0.1:8000"
 });
 
+const delay = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
 function Auth() {
   const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
@@ -41,12 +43,18 @@ function Auth() {
       return;
     }
     setLoading(true);
+    const loadingStartedAt = Date.now();
     try {
       let res;
       if (isLogin) {
         res = await api.post("/login", { email, password });
+        const remainingDelay = Math.max(0, 700 - (Date.now() - loadingStartedAt));
+        if (remainingDelay > 0) {
+          await delay(remainingDelay);
+        }
         localStorage.setItem("token", res.data.access_token);
         localStorage.setItem("user", JSON.stringify(res.data.user));
+        window.dispatchEvent(new Event("authchange"));
         clearFields();
         navigate("/");
       } else {
@@ -59,13 +67,13 @@ function Auth() {
         alert("Registered successfully. Please sign in.");
         clearFields();
         setIsLogin(true);
+        setLoading(false);
       }
     } catch (err) {
       const msg = typeof err.response?.data?.detail === "string"
         ? err.response.data.detail
         : err.response?.data?.detail?.[0]?.msg || "Authentication failed";
       setError(msg);
-    } finally {
       setLoading(false);
     }
   };
@@ -125,7 +133,14 @@ function Auth() {
                   </div>
                   <div className="auth-btn-row">
                     <button type="submit" disabled={loading} className="auth-btn">
-                      Sign In
+                      {loading ? (
+                        <>
+                          <span className="auth-btn-spinner" aria-hidden="true" />
+                          <span>Signing In...</span>
+                        </>
+                      ) : (
+                        "Sign In"
+                      )}
                     </button>
                   </div>
                 </form>
@@ -216,7 +231,14 @@ function Auth() {
                   </div>
                   <div className="auth-btn-row">
                     <button type="submit" disabled={loading} className="auth-btn">
-                      Sign Up
+                      {loading ? (
+                        <>
+                          <span className="auth-btn-spinner" aria-hidden="true" />
+                          <span>Creating Account...</span>
+                        </>
+                      ) : (
+                        "Sign Up"
+                      )}
                     </button>
                   </div>
                 </form>

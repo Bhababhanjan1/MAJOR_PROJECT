@@ -131,9 +131,9 @@ function Navbar() {
               Dashboard
             </button>
             <button
-              className={`nav-link ${location.pathname === "/resume-interview" ? "active" : ""}`}
+              className={`nav-link ${location.pathname === "/resume-analyzer" ? "active" : ""}`}
               onClick={() => {
-                navigate("/resume-interview");
+                navigate("/resume-analyzer");
                 closeMobileMenu();
               }}
             >
@@ -164,7 +164,16 @@ function Navbar() {
           </button>
 
           {!user ? (
-            <button onClick={() => navigate("/auth")}>Sign In / Sign Up</button>
+            <button
+              type="button"
+              className="navbar-auth-btn"
+              onClick={() => {
+                navigate("/auth");
+                closeMobileMenu();
+              }}
+            >
+              Sign In / Sign Up
+            </button>
           ) : (
             <div className="profile-area" ref={popupRef}>
               <button
