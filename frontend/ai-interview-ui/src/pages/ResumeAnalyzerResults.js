@@ -16,7 +16,6 @@ import {
   Wrench,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
-import Navbar from "../components/Navbar";
 import "../App.css";
 
 const ANALYZER_RESULT_STORAGE_KEY = "resumeAnalyzerResult";
@@ -807,8 +806,6 @@ function ResumeAnalyzerResults() {
 
   return (
     <div className="resume-studio-page resume-report-page">
-      <Navbar />
-
       <main className="resume-studio-shell">
         {pageData && result ? (
           <ResumeAnalyzerWorkspace

@@ -17,7 +17,6 @@ import {
   TrendingUp,
 } from "lucide-react";
 import "../App.css";
-import Navbar from "../components/Navbar";
 import { normalizeReport, safeErrorText, safeScore, safeText } from "../utils/interviewReport";
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || "http://127.0.0.1:8000";
@@ -680,8 +679,6 @@ function DashboardPage() {
 
   return (
     <>
-      <Navbar />
-
       <div className="page-content reveal dashboard-shell">
         <section className="dashboard-hero-card">
           <div className="dashboard-hero-card__content">

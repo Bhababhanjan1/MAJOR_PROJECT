@@ -12,7 +12,6 @@ import {
   Sparkles,
   WandSparkles,
 } from "lucide-react";
-import Navbar from "../components/Navbar";
 import "../App.css";
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || "http://127.0.0.1:8000";
@@ -180,8 +179,6 @@ function ResumeAnalyzer() {
 
   return (
     <div className="resume-studio-page">
-      <Navbar />
-
       <main className="resume-studio-shell">
         <section className="resume-studio-hero reveal">
           <div className="resume-studio-kicker">Resume Lab</div>

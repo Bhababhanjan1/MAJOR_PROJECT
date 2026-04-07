@@ -2,7 +2,6 @@
 import { useNavigate } from "react-router-dom";
 import { BrainCircuit, BriefcaseBusiness, Code2, FileSearch, Mic2, Sigma } from "lucide-react";
 import "../App.css";
-import Navbar from "../components/Navbar";
 
 const howItWorksSteps = [
   {
@@ -231,8 +230,6 @@ function Home() {
 
   return (
     <>
-      <Navbar />
-
       {/* HERO - professional two-column layout */}
       <div className="mock-hero violet-hero reveal">
         <div style={{ maxWidth: 720 }}>

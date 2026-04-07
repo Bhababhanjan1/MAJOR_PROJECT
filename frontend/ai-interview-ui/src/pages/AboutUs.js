@@ -13,7 +13,6 @@ import {
   Target,
   Users,
 } from "lucide-react";
-import Navbar from "../components/Navbar";
 import "../App.css";
 
 const signalCards = [
@@ -87,7 +86,6 @@ function AboutUs() {
 
   return (
     <>
-      <Navbar />
       <div className="about-lab-shell about-lab-shell-light">
         <div className="about-lab-aurora about-lab-aurora-one" />
         <div className="about-lab-aurora about-lab-aurora-two" />

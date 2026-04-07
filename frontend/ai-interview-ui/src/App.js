@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import Navbar from "./components/Navbar";
 
 /* MAIN PAGES */
 import Home from "./pages/Home";
@@ -29,6 +30,8 @@ import ProtectedRoute from "./ProtectedRoute";
 const ROUTE_EXIT_TRANSITION_MS = 280;
 
 const isHomeRoute = (pathname) => pathname === "/";
+const usesMainNavbar = (pathname) =>
+  ["/", "/about", "/dashboard", "/resume-analyzer", "/resume-analyzer/results"].includes(pathname);
 
 function ScrollRevealManager() {
   const location = useLocation();
@@ -284,16 +287,20 @@ function AnimatedRoutes() {
   const routeTransitionClassName = isHomeRoute(displayLocation.pathname)
     ? "route-transition route-transition--home"
     : `route-transition route-transition--${transitionStage}`;
+  const showMainNavbar = usesMainNavbar(displayLocation.pathname);
 
   return (
-    <div className="route-transition-shell">
-      <div
-        key={routeKey}
-        className={routeTransitionClassName}
-      >
-        <AppRoutes routeLocation={displayLocation} />
+    <>
+      {showMainNavbar ? <Navbar /> : null}
+      <div className="route-transition-shell">
+        <div
+          key={routeKey}
+          className={routeTransitionClassName}
+        >
+          <AppRoutes routeLocation={displayLocation} />
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
