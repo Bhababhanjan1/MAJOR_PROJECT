@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
+import { Info } from "lucide-react";
 import "../App.css";
 import MiniNavbar from "../components/MiniNavbar";
 
@@ -295,6 +296,21 @@ function buildLocalCodingSession(level, count, excludedKeys = []) {
   return items;
 }
 
+function buildGuaranteedCodingSession(level, count, excludedKeys = []) {
+  const uniqueItems = buildLocalCodingSession(level, count, excludedKeys);
+  if (uniqueItems.length >= count) {
+    return uniqueItems;
+  }
+
+  const filledItems = [...uniqueItems];
+  let index = 0;
+  while (filledItems.length < count) {
+    filledItems.push(buildLocalCodingFallback(level, index));
+    index += 1;
+  }
+  return filledItems;
+}
+
 function AptitudeTest() {
   const [stage, setStage] = useState("landing");
   const [selectedSection, setSelectedSection] = useState("aptitude");
@@ -311,6 +327,8 @@ function AptitudeTest() {
   const [codingSubmitResults, setCodingSubmitResults] = useState([]);
   const [codingLoading, setCodingLoading] = useState(false);
   const [codingError, setCodingError] = useState("");
+  const [startingTest, setStartingTest] = useState(false);
+  const setupSectionRef = useRef(null);
 
   const selectedSectionConfig = useMemo(() => getSectionConfig(selectedSection), [selectedSection]);
   const codingMode = selectedSectionConfig.mode === "coding";
@@ -323,6 +341,7 @@ function AptitudeTest() {
   const answeredCount = answers.filter((answer) => (answer || "").trim().length > 0).length;
   const minQuestionCount = codingMode ? 5 : 10;
   const sliderMaxQuestionCount = codingMode ? 20 : 50;
+  const isOverviewStage = stage === "landing" || stage === "setup";
   const selectedRuntime = useMemo(() => runtimeLanguages.find((item) => item.id === codingLanguage) || null, [runtimeLanguages, codingLanguage]);
   const currentCodingRunResult = codingRunResults[currentIndex] || null;
 
@@ -405,7 +424,14 @@ function AptitudeTest() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [answers, codingMode, questions, selectedSection, stage, timeLeft, currentIndex]);
 
+  function scrollToSetupSection() {
+    window.requestAnimationFrame(() => {
+      setupSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
   function handleOpenSetup() {
+    if (startingTest) return;
     setStage("setup");
     setQuestions([]);
     setAnswers([]);
@@ -415,10 +441,13 @@ function AptitudeTest() {
     setCodingRunResults([]);
     setCodingSubmitResults([]);
     setCodingError("");
-    window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+    scrollToSetupSection();
   }
 
   async function handleStartTest() {
+    if (startingTest) return;
+    setStartingTest(true);
+
     if (codingMode) {
       setCodingLoading(true);
       setCodingError("");
@@ -486,7 +515,7 @@ function AptitudeTest() {
       } catch (error) {
         const seenHistory = loadSeenCodingQuestions();
         const seenForLevel = Array.isArray(seenHistory[codingLevel]) ? seenHistory[codingLevel] : [];
-        const fallbackChallenges = buildLocalCodingSession(codingLevel, configuredQuestionCount, seenForLevel);
+        const fallbackChallenges = buildGuaranteedCodingSession(codingLevel, configuredQuestionCount, seenForLevel);
         setQuestions(fallbackChallenges);
         setAnswers(fallbackChallenges.map((challenge) => getStarterCode(challenge, codingLanguage)));
         setCodingRunResults(new Array(fallbackChallenges.length).fill(null));
@@ -502,6 +531,7 @@ function AptitudeTest() {
         setCodingError(error?.response?.data?.detail || "AI coding generation failed, so fallback coding questions were loaded.");
       } finally {
         setCodingLoading(false);
+        setStartingTest(false);
         window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
       }
       return;
@@ -514,6 +544,7 @@ function AptitudeTest() {
     setTimeLeft(configuredDuration);
     setSummary(null);
     setStage("test");
+    setStartingTest(false);
     window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
   }
 
@@ -615,127 +646,164 @@ function AptitudeTest() {
         <div>
           <h1>Aptitude Test</h1>
           <p>Choose a section, decide how many questions you want to practice, and take a timed round with instant summary review.</p>
-          <button className="mock-btn" onClick={handleOpenSetup}>Start Aptitude Test -&gt;</button>
+          <button className="mock-btn" onClick={handleOpenSetup} disabled={startingTest}>Start Aptitude Test -&gt;</button>
         </div>
       </div>
 
-      {stage === "landing" && (
-        <div className="mock-section">
-          <div className="section-header-row">
-            <h2 className="section-title">Practice Modes</h2>
-            <button className="small-start-btn" onClick={handleOpenSetup}>Start Aptitude -&gt;</button>
-          </div>
-          <div className="aptitude-info-grid">
-            <div className="aptitude-info-card aptitude-info-card-learn">
-              <div className="aptitude-info-card-tag aptitude-info-card-tag-warm">What you'll learn</div>
-              <ul>
-                <li>Quantitative, reasoning, and verbal problem solving with timed MCQ practice</li>
-                <li>Coding challenges with selectable level, multiple AI-generated questions, and runnable code</li>
-                <li>Passed test case counts and AI code review after submission</li>
-              </ul>
+      {isOverviewStage && (
+        <>
+          <div className="mock-section">
+            <div className="section-header-row">
+              <h2 className="section-title">Practice Modes</h2>
+              <button className="small-start-btn" onClick={handleOpenSetup} disabled={startingTest}>Start Aptitude -&gt;</button>
             </div>
-            <div className="aptitude-info-card aptitude-info-card-types">
-              <div className="aptitude-info-card-tag aptitude-info-card-tag-strong">Question types</div>
-              <ul>
-                <li>MCQ sections use 4-option questions with 60 seconds per question</li>
-                <li>The coding section uses a split problem/editor layout like coding platforms</li>
-                <li>The editor starts with a starter template, not a solved answer</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {stage === "setup" && (
-        <div className="mock-section">
-          <div className="aptitude-flow-card">
-            <div className="aptitude-flow-header">
-              <div>
-                <span className="aptitude-chip">Test setup</span>
-                <h2>Select your section and question count</h2>
-                <p>Non-coding sections allow 10 to 50 questions. The coding section lets you choose level and 5 to 20 AI-generated coding questions.</p>
+            <div className="aptitude-info-grid">
+              <div className="aptitude-info-card aptitude-info-card-learn">
+                <div className="aptitude-info-card-tag aptitude-info-card-tag-warm">What you'll learn</div>
+                <ul>
+                  <li>Quantitative, reasoning, and verbal problem solving with timed MCQ practice</li>
+                  <li>Coding challenges with selectable level, multiple AI-generated questions, and runnable code</li>
+                  <li>Passed test case counts and AI code review after submission</li>
+                </ul>
               </div>
-              <div className="aptitude-timer-preview">
-                <span>Total time</span>
-                <strong>{totalMinutes} min</strong>
-                <small>{codingMode ? `${configuredQuestionCount} coding questions` : `${configuredQuestionCount} questions x 60 sec`}</small>
+              <div className="aptitude-info-card aptitude-info-card-types">
+                <div className="aptitude-info-card-tag aptitude-info-card-tag-strong">Question types</div>
+                <ul>
+                  <li>MCQ sections use 4-option questions with 60 seconds per question</li>
+                  <li>The coding section uses a split problem/editor layout like coding platforms</li>
+                  <li>The editor starts with a starter template, not a solved answer</li>
+                </ul>
               </div>
             </div>
+          </div>
 
-            <div className="aptitude-setup-grid">
-              {SECTION_OPTIONS.map((section) => (
-                <button
+          <div className="mock-section" ref={setupSectionRef}>
+            <div className="aptitude-flow-card">
+              <div className="aptitude-flow-header">
+                <div>
+                  <span className="aptitude-chip">Test setup</span>
+                  <h2>Select your aptitude topic</h2>
+                </div>
+                <div className="aptitude-timer-preview">
+                  <span>Total time</span>
+                  <strong>{totalMinutes} min</strong>
+                  <small>{codingMode ? `${configuredQuestionCount} coding questions` : `${configuredQuestionCount} questions x 60 sec`}</small>
+                </div>
+              </div>
+
+              <div className="aptitude-setup-grid">
+                {SECTION_OPTIONS.map((section) => (
+                  <button
                   key={section.id}
                   type="button"
                   className={`aptitude-section-card ${selectedSection === section.id ? "is-active" : ""}`}
+                  disabled={startingTest}
                   onClick={() => setSelectedSection(section.id)}
                 >
-                  <strong>{section.title}</strong>
-                  <span>{section.description}</span>
-                </button>
-              ))}
-            </div>
+                    <strong>{section.title}</strong>
+                    <span>{section.description}</span>
+                  </button>
+                ))}
+              </div>
 
-            {codingMode ? (
-              <div className="aptitude-count-card">
+              {codingMode ? (
+                <div className="aptitude-count-card">
                 <div className="aptitude-count-copy">
                   <span className="aptitude-chip">Coding setup</span>
                   <h3>{codingLevel.charAt(0).toUpperCase() + codingLevel.slice(1)} level, {questionCount} questions</h3>
-                  <p>Choose a coding difficulty level, then set how many coding questions you want in this session from 5 to 20.</p>
-                </div>
-                <div className="aptitude-count-controls">
-                  <select className="aptitude-language-select" value={codingLevel} onChange={(event) => setCodingLevel(event.target.value)}>
-                    {CODING_LEVELS.map((level) => (
-                      <option key={level.id} value={level.id}>{level.title}</option>
-                    ))}
-                  </select>
-                  <input
-                    type="range"
-                    min="5"
-                    max="20"
-                    value={questionCount}
-                    onChange={(event) => setQuestionCount(Number(event.target.value))}
-                  />
-                  <div className="aptitude-count-stepper">
-                    <button type="button" onClick={() => setQuestionCount((current) => Math.max(5, current - 1))}>-</button>
-                    <div>{questionCount}</div>
-                    <button type="button" onClick={() => setQuestionCount((current) => Math.min(20, current + 1))}>+</button>
+                  <div className="aptitude-tip-row">
+                    <span
+                      className="aptitude-tip-sign"
+                      title="Choose a coding difficulty level, then set how many coding questions you want in this session from 5 to 20."
+                      aria-label="Tip: Choose a coding difficulty level, then set how many coding questions you want in this session from 5 to 20."
+                      tabIndex={0}
+                    >
+                      <Info size={16} strokeWidth={2.2} />
+                    </span>
+                    <p>Choose a coding difficulty level, then set how many coding questions you want in this session from 5 to 20.</p>
                   </div>
                 </div>
-              </div>
-            ) : (
-              <div className="aptitude-count-card">
-                <div className="aptitude-count-copy">
-                  <span className="aptitude-chip">Question count</span>
-                  <h3>{questionCount} questions selected</h3>
-                  <p>Choose between 10 and 50 questions for this section.</p>
-                </div>
-                <div className="aptitude-count-controls">
-                  <input
-                    type="range"
-                    min={minQuestionCount}
-                    max={sliderMaxQuestionCount}
-                    value={questionCount}
-                    onChange={(event) => {
-                      const nextValue = Number(event.target.value);
-                      setQuestionCount(Number.isNaN(nextValue) ? minQuestionCount : Math.max(minQuestionCount, nextValue));
-                    }}
-                  />
-                  <div className="aptitude-count-stepper">
-                    <button type="button" onClick={() => setQuestionCount((current) => Math.max(minQuestionCount, current - 1))}>-</button>
-                    <div>{questionCount}</div>
-                    <button type="button" onClick={() => setQuestionCount((current) => current + 1)}>+</button>
+                  <div className="aptitude-count-controls">
+                    <select className="aptitude-language-select" value={codingLevel} onChange={(event) => setCodingLevel(event.target.value)} disabled={startingTest}>
+                      {CODING_LEVELS.map((level) => (
+                        <option key={level.id} value={level.id}>{level.title}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="range"
+                      min="5"
+                      max="20"
+                      value={questionCount}
+                      disabled={startingTest}
+                      onChange={(event) => setQuestionCount(Number(event.target.value))}
+                    />
+                    <div className="aptitude-count-stepper">
+                      <button type="button" onClick={() => setQuestionCount((current) => Math.max(5, current - 1))} disabled={startingTest}>-</button>
+                      <div>{questionCount}</div>
+                      <button type="button" onClick={() => setQuestionCount((current) => Math.min(20, current + 1))} disabled={startingTest}>+</button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="aptitude-count-card">
+                  <div className="aptitude-count-copy">
+                    <span className="aptitude-chip">Question count</span>
+                    <h3>{questionCount} questions selected</h3>
+                    <p>Choose between 10 and 50 questions for this section.</p>
+                  </div>
+                  <div className="aptitude-count-controls">
+                    <input
+                      type="range"
+                      min={minQuestionCount}
+                      max={sliderMaxQuestionCount}
+                      value={questionCount}
+                      disabled={startingTest}
+                      onChange={(event) => {
+                        const nextValue = Number(event.target.value);
+                        setQuestionCount(Number.isNaN(nextValue) ? minQuestionCount : Math.max(minQuestionCount, nextValue));
+                      }}
+                    />
+                    <div className="aptitude-count-stepper">
+                      <button type="button" onClick={() => setQuestionCount((current) => Math.max(minQuestionCount, current - 1))} disabled={startingTest}>-</button>
+                      <div>{questionCount}</div>
+                      <button type="button" onClick={() => setQuestionCount((current) => current + 1)} disabled={startingTest}>+</button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-            <div className="aptitude-flow-actions">
-              <button type="button" className="small-start-btn aptitude-secondary-btn" onClick={() => setStage("landing")}>Back</button>
-              <button type="button" className="mock-btn aptitude-primary-btn" onClick={handleStartTest}>Start Timed Test</button>
+              <div className="aptitude-flow-actions aptitude-setup-actions">
+                <button
+                  type="button"
+                  className="small-start-btn aptitude-secondary-btn aptitude-setup-back-btn"
+                  disabled={startingTest}
+                  onClick={() => {
+                    setStage("landing");
+                    window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+                  }}
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  className={`mock-btn aptitude-primary-btn ${startingTest ? "is-loading" : ""}`}
+                  onClick={handleStartTest}
+                  disabled={startingTest}
+                  aria-busy={startingTest}
+                >
+                  {startingTest ? (
+                    <>
+                      <span className="aptitude-btn-spinner" aria-hidden="true" />
+                      Starting Test...
+                    </>
+                  ) : (
+                    "Start Test"
+                  )}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
 
       {stage === "test" && currentQuestion && (

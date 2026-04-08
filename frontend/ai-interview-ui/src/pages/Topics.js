@@ -79,19 +79,19 @@ const HR_FOCUS_AREAS = [
 
 const HR_ROUND_OPTIONS = [
   {
-    id: "technical",
-    label: "Technical Interview",
-    description: "Role-fit, project explanation, and role-aware situational questions.",
+    id: "hr",
+    label: "HR Interview",
+    description: "Classic HR questions around motivation, role fit, strengths, and workplace approach.",
+  },
+  {
+    id: "behavioral",
+    label: "Behavioral Interview",
+    description: "STAR-based teamwork, leadership, conflict, and situational experience questions.",
   },
   {
     id: "hr_behavioral",
-    label: "HR / Behavioral Interview",
+    label: "HR + Behavioral Interview",
     description: "Classic HR, STAR-based behavioral, communication, and personality questions.",
-  },
-  {
-    id: "both",
-    label: "Both",
-    description: "A mixed round that blends motivation, teamwork, situational, and role-fit prompts.",
   },
 ];
 
@@ -105,28 +105,28 @@ const PAGE_CONTENT = {
     startButtonLabel: "Start Your HR Interview ->",
     cards: [
       {
-        key: "hr_behavioral",
-        title: "HR / Behavioral Interview",
-        description: "Warm-up, motivation, STAR-based questions, situational prompts, and closing questions.",
+        key: "hr",
+        title: "HR Interview",
+        description: "Warm-up, motivation, role-fit, strengths, and workplace communication questions.",
         actionLabel: "Build HR Round ->",
         selectionMode: "hr",
-        defaultRound: "hr_behavioral",
+        defaultRound: "hr",
       },
       {
-        key: "technical",
-        title: "Technical Interview",
-        description: "Interviewer-style role-fit questions with technical pressure, ownership, and communication focus.",
-        actionLabel: "Build Technical Round ->",
+        key: "behavioral",
+        title: "Behavioral Interview",
+        description: "STAR-based leadership, teamwork, conflict handling, ownership, and situational prompts.",
+        actionLabel: "Build Behavioral Round ->",
         selectionMode: "hr",
-        defaultRound: "technical",
+        defaultRound: "behavioral",
       },
       {
-        key: "both",
-        title: "Both Interviews",
-        description: "Blend technical, HR, and behavioral prompts in one adaptive interview flow.",
+        key: "hr_behavioral",
+        title: "HR + Behavioral Interview",
+        description: "Blend HR and behavioral prompts in one adaptive interview flow.",
         actionLabel: "Build Combined Round ->",
         selectionMode: "hr",
-        defaultRound: "both",
+        defaultRound: "hr_behavioral",
       },
     ],
   },

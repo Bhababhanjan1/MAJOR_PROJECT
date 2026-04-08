@@ -184,7 +184,14 @@ function formatBreakdownLabel(key) {
 function formatRoundLabel(value) {
   const normalized = safeText(value);
   if (!normalized) return "";
-  return normalized
+  const lookup = {
+    hr: "HR",
+    behavioral: "Behavioral",
+    hr_behavioral: "HR + Behavioral",
+    technical: "HR + Behavioral",
+    both: "HR + Behavioral",
+  };
+  return lookup[normalized.toLowerCase()] || normalized
     .replace(/_/g, " / ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }

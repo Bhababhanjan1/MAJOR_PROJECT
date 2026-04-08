@@ -361,6 +361,105 @@ def _difficulty_from_experience(experience: str) -> str:
     return "moderate"
 
 
+def _difficulty_band(difficulty_guidance: str) -> str:
+    value = _normalize_text(difficulty_guidance).lower()
+    if "introductory" in value:
+        return "introductory"
+    if "advanced" in value:
+        return "advanced"
+    return "moderate"
+
+
+def _language_bank_key(language: str) -> str:
+    value = _normalize_text(language)
+    aliases = {
+        "Node.js": "JavaScript",
+        ".NET": "C#",
+    }
+    return aliases.get(value, value)
+
+
+def _language_phase_defaults(phase: str) -> Tuple[List[str], List[str]]:
+    if phase == "warmup":
+        return (
+            [
+                "correct basic concept",
+                "clear explanation in plain terms",
+                "when or why it is used",
+                "small practical example when helpful",
+            ],
+            ["fundamentals", "clarity", "correctness"],
+        )
+    if phase == "concept_deep_dive":
+        return (
+            [
+                "clear conceptual explanation",
+                "important trade-off or caveat",
+                "real-world relevance",
+                "structured reasoning",
+            ],
+            ["conceptual depth", "trade-offs", "clarity"],
+        )
+    return (
+        [
+            "real project or debugging context",
+            "specific actions or technical choices",
+            "reasoning behind the approach",
+            "result, learning, or resolution",
+        ],
+        ["specificity", "practical understanding", "clarity"],
+    )
+
+
+def _pick_language_phase_question(
+    language: str,
+    phase: str,
+    difficulty_guidance: str,
+    variation_seed: str = "",
+    rotation_index: int = 0,
+) -> Dict[str, Any]:
+    key = _language_bank_key(language)
+    phase_key = _normalize_text(phase) or "warmup"
+    bank = LANGUAGE_PHASE_QUESTION_BANK.get(key, LANGUAGE_PHASE_QUESTION_BANK["default"])
+    options = list(bank.get(phase_key) or LANGUAGE_PHASE_QUESTION_BANK["default"].get(phase_key) or [])
+    if not options:
+        options = list(LANGUAGE_PHASE_QUESTION_BANK["default"]["warmup"])
+
+    shuffler = random.Random(
+        _normalize_text(f"{variation_seed}|{key}|{phase_key}|{difficulty_guidance}|{rotation_index}")
+    )
+    selected = dict(shuffler.choice(options))
+    question_text = _normalize_text(selected.get("question") or "").format(language=language)
+    topic_tag = _normalize_text(selected.get("topic_tag") or language).format(language=language)
+    band = _difficulty_band(difficulty_guidance)
+
+    if phase_key == "warmup":
+        if band == "introductory":
+            question_text = f"{question_text} Keep the explanation simple and concrete."
+        elif band == "advanced":
+            question_text = f"{question_text} Also mention one caveat, edge case, or mistake if relevant."
+    elif phase_key == "concept_deep_dive":
+        if band == "introductory":
+            question_text = f"{question_text} Explain it step by step."
+        elif band == "advanced":
+            question_text = f"{question_text} Also include any production trade-off, pitfall, or edge case that matters."
+    elif phase_key == "language_discovery":
+        if band == "introductory":
+            question_text = f"{question_text} Keep it to one clear example."
+        elif band == "advanced":
+            question_text = f"{question_text} Include the deeper technical decision or trade-off if it mattered."
+
+    expected_points, evaluation_focus = _language_phase_defaults(phase_key)
+    question_type = "practical" if phase_key == "language_discovery" else ("conceptual" if phase_key == "concept_deep_dive" else "fundamental")
+    return {
+        "question": question_text,
+        "topic_tag": topic_tag,
+        "expected_points": expected_points,
+        "evaluation_focus": evaluation_focus,
+        "question_type": question_type,
+    }
+
+
 def _resolve_question_count(payload: Dict[str, Any]) -> int:
     config_mode = payload.get("config_mode")
     if config_mode == "time":
@@ -380,7 +479,23 @@ def _selected_focus_areas(payload: Dict[str, Any]) -> List[str]:
 
 def _hr_round_mode(payload: Dict[str, Any]) -> str:
     value = _normalize_text(payload.get("hr_round") or "").lower()
-    return value if value in {"technical", "hr_behavioral", "both"} else "hr_behavioral"
+    if value in {"hr", "behavioral", "hr_behavioral"}:
+        return value
+    if value in {"technical", "both"}:
+        return "hr_behavioral"
+    return "hr_behavioral"
+
+
+def _hr_round_label(value: str) -> str:
+    normalized = _normalize_text(value).lower()
+    mapping = {
+        "hr": "HR",
+        "behavioral": "Behavioral",
+        "hr_behavioral": "HR + Behavioral",
+        "technical": "HR + Behavioral",
+        "both": "HR + Behavioral",
+    }
+    return mapping.get(normalized, "HR + Behavioral")
 
 
 def _hr_adaptive_interview_enabled(payload: Dict[str, Any]) -> bool:
@@ -1461,6 +1576,204 @@ KNOWN_TOOLS = {
     "rest apis": "REST APIs",
 }
 
+KNOWN_LANGUAGE_FOCUS_AREAS = {
+    "fundamentals": "fundamentals",
+    "basic concepts": "fundamentals",
+    "core concepts": "fundamentals",
+    "debugging": "debugging",
+    "troubleshooting": "debugging",
+    "problem solving": "problem solving",
+    "problem-solving": "problem solving",
+    "algorithms": "problem solving",
+    "api": "APIs",
+    "apis": "APIs",
+    "project experience": "project experience",
+    "projects": "project experience",
+    "real project": "project experience",
+    "performance": "performance",
+    "optimization": "performance",
+    "testing": "testing",
+}
+
+LANGUAGE_PHASE_QUESTION_BANK = {
+    "Python": {
+        "warmup": [
+            {"question": "In Python, what is the difference between a list and a tuple, and when would you choose one over the other?", "topic_tag": "Python collections"},
+            {"question": "In Python, what is the difference between a dictionary and a set, and when is each the better choice?", "topic_tag": "Python dicts and sets"},
+            {"question": "In Python, how does variable scope work inside functions, and what do global or nonlocal change?", "topic_tag": "Python scope"},
+        ],
+        "concept_deep_dive": [
+            {"question": "In Python, how do shallow copy and deep copy differ, and when can choosing the wrong one create bugs?", "topic_tag": "Python copy behavior"},
+            {"question": "In Python, how do iterators and generators differ, and why does that difference matter in real programs?", "topic_tag": "Python iterators and generators"},
+            {"question": "In Python, what is the difference between mutable and immutable objects, and how can that affect function behavior?", "topic_tag": "Python mutability"},
+        ],
+        "language_discovery": [
+            {"question": "Tell me about one real Python bug or debugging issue you handled. What was happening, and how did you fix it?", "topic_tag": "Python debugging"},
+            {"question": "Tell me about one Python project where a core language feature made a real difference. What was the situation, and why did that feature help?", "topic_tag": "Python project experience"},
+        ],
+    },
+    "JavaScript": {
+        "warmup": [
+            {"question": "In JavaScript, what is the difference between let, const, and var, and why does it matter in real code?", "topic_tag": "JavaScript variables"},
+            {"question": "In JavaScript, what is the difference between == and ===, and when can using the wrong one cause problems?", "topic_tag": "JavaScript equality"},
+            {"question": "In JavaScript, how do arrays and plain objects differ, and when is each the right choice?", "topic_tag": "JavaScript data structures"},
+        ],
+        "concept_deep_dive": [
+            {"question": "In JavaScript, what is a closure, and when does it become especially useful or risky?", "topic_tag": "JavaScript closures"},
+            {"question": "In JavaScript, how do the event loop, call stack, and task queues work together?", "topic_tag": "JavaScript event loop"},
+            {"question": "In JavaScript, how do async and await relate to promises, and what mistakes commonly appear around them?", "topic_tag": "JavaScript async"},
+        ],
+        "language_discovery": [
+            {"question": "Tell me about one real JavaScript bug or async issue you had to debug. What was happening, and how did you resolve it?", "topic_tag": "JavaScript debugging"},
+            {"question": "Tell me about one JavaScript feature or project where scope, closures, async flow, or data handling mattered in practice.", "topic_tag": "JavaScript project experience"},
+        ],
+    },
+    "TypeScript": {
+        "warmup": [
+            {"question": "In TypeScript, what is the difference between any and unknown, and when should each be avoided or preferred?", "topic_tag": "TypeScript types"},
+            {"question": "In TypeScript, how do interface and type differ, and when do those differences matter?", "topic_tag": "TypeScript interface vs type"},
+            {"question": "In TypeScript, what are union types, and how does narrowing help you use them safely?", "topic_tag": "TypeScript unions"},
+        ],
+        "concept_deep_dive": [
+            {"question": "In TypeScript, how do generics improve code quality, and when can they become too loose or too complex?", "topic_tag": "TypeScript generics"},
+            {"question": "In TypeScript, what is the difference between compile-time safety and runtime behavior, and why does that distinction matter?", "topic_tag": "TypeScript runtime vs compile time"},
+            {"question": "In TypeScript, how do discriminated unions work, and why are they useful in larger codebases?", "topic_tag": "TypeScript discriminated unions"},
+        ],
+        "language_discovery": [
+            {"question": "Tell me about one real TypeScript issue or refactor where types helped you catch or prevent a bug.", "topic_tag": "TypeScript debugging"},
+            {"question": "Tell me about one TypeScript project where strong typing, generics, or narrowing made a meaningful difference.", "topic_tag": "TypeScript project experience"},
+        ],
+    },
+    "Java": {
+        "warmup": [
+            {"question": "In Java, what is the difference between primitive types and reference types, and why does that matter?", "topic_tag": "Java types"},
+            {"question": "In Java, how do ArrayList and arrays differ, and when would you choose one over the other?", "topic_tag": "Java collections"},
+            {"question": "In Java, what is the difference between checked and unchecked exceptions?", "topic_tag": "Java exceptions"},
+        ],
+        "concept_deep_dive": [
+            {"question": "In Java, why do equals and hashCode need to stay consistent, and what can go wrong if they do not?", "topic_tag": "Java equals and hashCode"},
+            {"question": "In Java, how do interface and abstract class differ, and when would you choose one over the other?", "topic_tag": "Java abstraction"},
+            {"question": "In Java, how does garbage collection affect real applications, and what should developers still manage carefully?", "topic_tag": "Java garbage collection"},
+        ],
+        "language_discovery": [
+            {"question": "Tell me about one real Java debugging issue, exception problem, or performance issue you handled. What happened, and how did you solve it?", "topic_tag": "Java debugging"},
+            {"question": "Tell me about one Java project where core language behavior or the standard library strongly influenced your design or implementation.", "topic_tag": "Java project experience"},
+        ],
+    },
+    "Go": {
+        "warmup": [
+            {"question": "In Go, what is the difference between an array and a slice, and why do developers usually work with slices more often?", "topic_tag": "Go arrays and slices"},
+            {"question": "In Go, how does error handling usually work, and why is it intentionally different from exception-based models?", "topic_tag": "Go error handling"},
+            {"question": "In Go, how do structs and interfaces differ, and when is each central to good design?", "topic_tag": "Go types"},
+        ],
+        "concept_deep_dive": [
+            {"question": "In Go, how do goroutines and channels work together, and what mistakes often appear around them?", "topic_tag": "Go concurrency"},
+            {"question": "In Go, how do pointer semantics affect function behavior and performance?", "topic_tag": "Go pointers"},
+            {"question": "In Go, what is the difference between buffered and unbuffered channels, and when does that difference matter?", "topic_tag": "Go channels"},
+        ],
+        "language_discovery": [
+            {"question": "Tell me about one real Go bug, concurrency issue, or debugging problem you handled. What was happening, and how did you resolve it?", "topic_tag": "Go debugging"},
+            {"question": "Tell me about one Go project where slices, interfaces, concurrency, or error handling mattered in practice.", "topic_tag": "Go project experience"},
+        ],
+    },
+    "C#": {
+        "warmup": [
+            {"question": "In C#, what is the difference between value types and reference types, and why does that matter in practice?", "topic_tag": "C# value vs reference types"},
+            {"question": "In C#, how do IEnumerable and List differ, and when is each the better fit?", "topic_tag": "C# collections"},
+            {"question": "In C#, what do async and await do, and what problem do they solve?", "topic_tag": "C# async"},
+        ],
+        "concept_deep_dive": [
+            {"question": "In C#, how do interface and abstract class differ, and when would you choose one instead of the other?", "topic_tag": "C# abstraction"},
+            {"question": "In C#, how do delegates and events differ, and when does that distinction matter?", "topic_tag": "C# delegates and events"},
+            {"question": "In C#, how do nullable reference types improve code safety, and what limits do they still have?", "topic_tag": "C# nullability"},
+        ],
+        "language_discovery": [
+            {"question": "Tell me about one real C# debugging issue, async problem, or production bug you handled. What happened, and how did you fix it?", "topic_tag": "C# debugging"},
+            {"question": "Tell me about one C# project where core language behavior or framework usage affected your implementation decisions.", "topic_tag": "C# project experience"},
+        ],
+    },
+    "Rust": {
+        "warmup": [
+            {"question": "In Rust, what problem do ownership and borrowing solve, and how would you explain them simply?", "topic_tag": "Rust ownership"},
+            {"question": "In Rust, what is the difference between Option and Result, and when is each used?", "topic_tag": "Rust option and result"},
+            {"question": "In Rust, how do mutable and immutable bindings differ, and why is that important?", "topic_tag": "Rust mutability"},
+        ],
+        "concept_deep_dive": [
+            {"question": "In Rust, how do moves, borrows, and clones differ, and when does choosing the wrong one hurt correctness or performance?", "topic_tag": "Rust moves and borrows"},
+            {"question": "In Rust, what role do lifetimes play, and when do developers really need to think about them?", "topic_tag": "Rust lifetimes"},
+            {"question": "In Rust, how do traits compare to interfaces or protocols in other languages, and why are they powerful?", "topic_tag": "Rust traits"},
+        ],
+        "language_discovery": [
+            {"question": "Tell me about one real Rust error, borrow-checker issue, or debugging problem you worked through. What was happening, and how did you solve it?", "topic_tag": "Rust debugging"},
+            {"question": "Tell me about one Rust project where ownership, lifetimes, error handling, or performance trade-offs mattered in practice.", "topic_tag": "Rust project experience"},
+        ],
+    },
+    "Kotlin": {
+        "warmup": [
+            {"question": "In Kotlin, what is the difference between val and var, and why does that matter for code quality?", "topic_tag": "Kotlin val vs var"},
+            {"question": "In Kotlin, how does null safety work, and what problem is it designed to reduce?", "topic_tag": "Kotlin null safety"},
+            {"question": "In Kotlin, what is a data class, and when is it more useful than a regular class?", "topic_tag": "Kotlin data classes"},
+        ],
+        "concept_deep_dive": [
+            {"question": "In Kotlin, how do higher-order functions and collection transformations improve readability, and where can they be overused?", "topic_tag": "Kotlin functional style"},
+            {"question": "In Kotlin, how do coroutines differ from thread-based approaches, and why does that matter?", "topic_tag": "Kotlin coroutines"},
+            {"question": "In Kotlin, how do sealed classes help model state and control flow?", "topic_tag": "Kotlin sealed classes"},
+        ],
+        "language_discovery": [
+            {"question": "Tell me about one real Kotlin bug, nullability issue, coroutine problem, or debugging case you handled.", "topic_tag": "Kotlin debugging"},
+            {"question": "Tell me about one Kotlin project where null safety, coroutines, or collection handling mattered in practice.", "topic_tag": "Kotlin project experience"},
+        ],
+    },
+    "PHP": {
+        "warmup": [
+            {"question": "In PHP, how do associative arrays differ from indexed arrays, and when does that matter in real code?", "topic_tag": "PHP arrays"},
+            {"question": "In PHP, what is the difference between == and ===, and when can mixing them up cause bugs?", "topic_tag": "PHP equality"},
+            {"question": "In PHP, how do include, require, and autoloading differ at a high level?", "topic_tag": "PHP loading"},
+        ],
+        "concept_deep_dive": [
+            {"question": "In PHP, how do object references and copy behavior work, and when can they surprise developers?", "topic_tag": "PHP object behavior"},
+            {"question": "In PHP, how do exceptions improve error handling compared with older patterns?", "topic_tag": "PHP exceptions"},
+            {"question": "In PHP, how do traits help code reuse, and when can using too many of them become messy?", "topic_tag": "PHP traits"},
+        ],
+        "language_discovery": [
+            {"question": "Tell me about one real PHP bug, debugging issue, or framework problem you handled. What happened, and how did you fix it?", "topic_tag": "PHP debugging"},
+            {"question": "Tell me about one PHP project where arrays, object behavior, framework conventions, or request handling mattered in practice.", "topic_tag": "PHP project experience"},
+        ],
+    },
+    "Ruby": {
+        "warmup": [
+            {"question": "In Ruby, what is the difference between a symbol and a string, and when does that distinction matter?", "topic_tag": "Ruby symbols and strings"},
+            {"question": "In Ruby, how do blocks differ from procs and lambdas at a practical level?", "topic_tag": "Ruby blocks and lambdas"},
+            {"question": "In Ruby, how do arrays and hashes differ, and when is each the better fit?", "topic_tag": "Ruby collections"},
+        ],
+        "concept_deep_dive": [
+            {"question": "In Ruby, how do mixins and inheritance differ, and when would you choose one approach over the other?", "topic_tag": "Ruby mixins"},
+            {"question": "In Ruby, how do Enumerable methods improve code clarity, and where can they hide performance costs?", "topic_tag": "Ruby enumerable"},
+            {"question": "In Ruby, how does object mutability affect method behavior and debugging?", "topic_tag": "Ruby mutability"},
+        ],
+        "language_discovery": [
+            {"question": "Tell me about one real Ruby bug, debugging issue, or Rails-related problem you handled. What happened, and how did you solve it?", "topic_tag": "Ruby debugging"},
+            {"question": "Tell me about one Ruby project where blocks, mixins, collections, or object behavior mattered in practice.", "topic_tag": "Ruby project experience"},
+        ],
+    },
+    "default": {
+        "warmup": [
+            {"question": "In {language}, what basic data types or core collections do developers use most often, and when does each make sense?", "topic_tag": "{language} core types"},
+            {"question": "In {language}, how do functions or methods usually work, and what basics should a strong developer understand clearly?", "topic_tag": "{language} functions"},
+            {"question": "In {language}, how does basic control flow and error handling work, and where do beginners commonly make mistakes?", "topic_tag": "{language} basics"},
+        ],
+        "concept_deep_dive": [
+            {"question": "In {language}, what language behavior, trade-off, or edge case should a strong developer understand beyond the basics?", "topic_tag": "{language} deeper concepts"},
+            {"question": "In {language}, what core behavior becomes especially important in larger or more realistic codebases?", "topic_tag": "{language} real-world behavior"},
+            {"question": "In {language}, what concept looks simple at first but causes real bugs if misunderstood?", "topic_tag": "{language} common pitfalls"},
+        ],
+        "language_discovery": [
+            {"question": "Tell me about one real bug, debugging issue, or implementation problem you handled while working in {language}.", "topic_tag": "{language} debugging"},
+            {"question": "Tell me about one project or feature where a core part of {language} mattered in practice.", "topic_tag": "{language} project experience"},
+        ],
+    },
+}
+
 
 def _merge_unique(existing: List[str], new_items: List[str]) -> List[str]:
     merged = list(existing or [])
@@ -1500,21 +1813,36 @@ def _extract_preferred_language(text: str, languages: List[str]) -> str:
     return languages[0] if len(languages) == 1 else ""
 
 
-def _build_hr_phase_plan(question_count: int) -> List[str]:
-    if question_count <= 3:
-        return ["introduction", "behavioral", "closing"]
-    if question_count == 4:
-        return ["introduction", "motivation", "situational", "closing"]
-    if question_count == 5:
-        return ["introduction", "background", "behavioral", "situational", "closing"]
-    if question_count == 6:
-        return ["introduction", "background", "motivation", "behavioral", "situational", "closing"]
-    if question_count == 7:
-        return ["introduction", "background", "motivation", "behavioral", "behavioral", "situational", "closing"]
+def _build_hr_phase_plan(question_count: int, round_mode: str) -> List[str]:
+    normalized_mode = _normalize_text(round_mode).lower() or "hr_behavioral"
 
-    plan = ["introduction", "background", "motivation", "behavioral", "behavioral", "communication", "situational", "closing"]
+    mode_configs = {
+        "hr": {
+            "base": ["introduction", "background", "motivation", "strengths", "role_fit", "workplace", "closing"],
+            "extras": ["workplace", "role_fit", "strengths", "motivation"],
+        },
+        "behavioral": {
+            "base": ["introduction", "behavioral", "conflict", "behavioral", "situational", "communication", "closing"],
+            "extras": ["behavioral", "conflict", "situational", "communication"],
+        },
+        "hr_behavioral": {
+            "base": ["introduction", "background", "motivation", "strengths", "behavioral", "conflict", "situational", "workplace", "closing"],
+            "extras": ["behavioral", "role_fit", "strengths", "situational", "workplace"],
+        },
+    }
+
+    config = mode_configs.get(normalized_mode, mode_configs["hr_behavioral"])
+    if question_count <= 1:
+        return ["introduction"]
+
+    if question_count <= len(config["base"]):
+        return config["base"][: question_count - 1] + ["closing"]
+
+    plan = list(config["base"])
+    extra_index = 0
     while len(plan) < question_count:
-        plan.insert(-2, "behavioral")
+        plan.insert(-1, config["extras"][extra_index % len(config["extras"])])
+        extra_index += 1
     return plan[: question_count - 1] + ["closing"]
 
 
@@ -1522,12 +1850,22 @@ def _build_focus_plan(focus_areas: List[str], question_count: int) -> List[str]:
     cleaned = [item for item in _safe_list(focus_areas) if item]
     if not cleaned:
         cleaned = ["Communication", "Leadership", "Problem-solving", "Teamwork", "Confidence"]
-    return [cleaned[index % len(cleaned)] for index in range(question_count)]
+
+    base_questions_per_area = question_count // len(cleaned)
+    remainder = question_count % len(cleaned)
+    plan: List[str] = []
+
+    for index, area in enumerate(cleaned):
+        allocation = base_questions_per_area + (1 if index < remainder else 0)
+        plan.extend([area] * allocation)
+
+    return plan[:question_count]
 
 
 def _build_hr_adaptive_state(payload: Dict[str, Any], question_count: int) -> Dict[str, Any]:
     focus_areas = _selected_focus_areas(payload)
     resolved_focus_areas = focus_areas or ["Communication", "Leadership", "Problem-solving", "Teamwork", "Confidence"]
+    round_mode = _hr_round_mode(payload)
     return {
         "enabled": True,
         "mode": "hr",
@@ -1544,8 +1882,8 @@ def _build_hr_adaptive_state(payload: Dict[str, Any], question_count: int) -> Di
         "hr_question_target": question_count,
         "role_label": _normalize_text(payload.get("job_role") or "Candidate"),
         "confidence_summary": "",
-        "round_mode": _hr_round_mode(payload),
-        "phase_plan": _build_hr_phase_plan(question_count),
+        "round_mode": round_mode,
+        "phase_plan": _build_hr_phase_plan(question_count, round_mode),
     }
 
 
@@ -1585,7 +1923,25 @@ def _adaptive_role_interview_enabled(payload: Dict[str, Any]) -> bool:
     return False
 
 
-def _build_technical_phase_plan(question_count: int) -> List[str]:
+def _build_technical_phase_plan(question_count: int, selected_mode: str = "") -> List[str]:
+    if _normalize_text(selected_mode).lower() == "language":
+        if question_count <= 1:
+            return ["warmup"]
+        if question_count == 2:
+            return ["warmup", "concept_deep_dive"]
+        if question_count == 3:
+            return ["warmup", "concept_deep_dive", "language_discovery"]
+        if question_count == 4:
+            return ["warmup", "concept_deep_dive", "language_discovery", "real_world_scenario"]
+
+        plan = ["warmup", "concept_deep_dive", "language_discovery", "structured_thinking", "real_world_scenario"]
+        extra_cycle = ["concept_deep_dive", "structured_thinking", "real_world_scenario"]
+        cycle_index = 0
+        while len(plan) < question_count:
+            plan.insert(-1, extra_cycle[cycle_index % len(extra_cycle)])
+            cycle_index += 1
+        return plan[:question_count]
+
     if question_count <= 1:
         return ["warmup"]
     if question_count == 2:
@@ -1619,7 +1975,7 @@ def _detect_interview_control_command(value: str) -> Optional[str]:
     if not normalized:
         return None
     word_count = len([word for word in normalized.split() if word])
-    if word_count > 10:
+    if word_count > 14:
         return None
 
     repeat_patterns = [
@@ -1627,16 +1983,29 @@ def _detect_interview_control_command(value: str) -> Optional[str]:
         r"^repeat again$",
         r"^repeat question$",
         r"^repeat the question$",
+        r"^repeat that question$",
+        r"^repeat this question$",
+        r"^repeat the question again$",
+        r"^repeat that question again$",
         r"^say again$",
         r"^say that again$",
         r"^say the question again$",
         r"^can you repeat$",
         r"^can you repeat that$",
         r"^can you repeat the question$",
+        r"^can you repeat this question$",
+        r"^can you repeat that question$",
+        r"^can you please repeat$",
+        r"^can you please repeat that$",
+        r"^can you please repeat the question$",
         r"^could you repeat that$",
+        r"^could you repeat the question$",
+        r"^could you please repeat that$",
+        r"^could you please repeat the question$",
         r"^please repeat$",
         r"^please repeat that$",
         r"^please repeat the question$",
+        r"^please repeat this question$",
         r"^one more time$",
         r"^sorry repeat$",
         r"^i did not catch that$",
@@ -1654,20 +2023,31 @@ def _detect_interview_control_command(value: str) -> Optional[str]:
         r"^(i )?didn't understand the question$",
         r"^(i )?cannot understand$",
         r"^(i )?cannot understand the question$",
+        r"^(i )?cannot understand this question$",
         r"^(i )?can't understand$",
         r"^(i )?can't understand the question$",
+        r"^(i )?can't understand this question$",
+        r"^(i )?cant understand$",
+        r"^(i )?cant understand the question$",
+        r"^(i )?cant understand this question$",
         r"^can you explain$",
         r"^can you explain that$",
         r"^can you explain the question$",
+        r"^can you explain this question$",
+        r"^can you please explain the question$",
         r"^could you explain$",
         r"^could you explain that$",
         r"^could you explain the question$",
+        r"^could you explain this question$",
         r"^please explain$",
         r"^please explain the question$",
+        r"^please explain this question$",
         r"^clarify$",
         r"^clarify the question$",
+        r"^clarify this question$",
         r"^simplify$",
         r"^simplify the question$",
+        r"^simplify this question$",
         r"^make it simpler$",
         r"^what do you mean$",
         r"^what does that mean$",
@@ -1678,6 +2058,46 @@ def _detect_interview_control_command(value: str) -> Optional[str]:
     if any(re.fullmatch(pattern, normalized) for pattern in repeat_patterns):
         return "repeat"
     if any(re.fullmatch(pattern, normalized) for pattern in clarify_patterns):
+        return "clarify"
+    if any(
+        marker in normalized
+        for marker in (
+            "repeat the question",
+            "repeat that question",
+            "repeat this question",
+            "can you repeat",
+            "could you repeat",
+            "please repeat",
+            "say that again",
+            "one more time",
+            "did not catch that",
+            "didn't catch that",
+        )
+    ):
+        return "repeat"
+    if any(
+        marker in normalized
+        for marker in (
+            "do not understand",
+            "don't understand",
+            "did not understand",
+            "didn't understand",
+            "cannot understand",
+            "can't understand",
+            "cant understand",
+            "explain the question",
+            "explain this question",
+            "clarify the question",
+            "clarify this question",
+            "simplify the question",
+            "simplify this question",
+            "make it simpler",
+            "what do you mean",
+            "what does that mean",
+            "i am confused",
+            "i'm confused",
+        )
+    ):
         return "clarify"
     return None
 
@@ -2059,15 +2479,16 @@ def _build_adaptive_state(payload: Dict[str, Any], role_blueprint: Dict[str, Any
     include_hr = category == "mock"
     hr_target = 0 if not include_hr else (1 if question_count <= 5 else 2)
     technical_target = max(1, question_count - hr_target)
+    language_mode = (selected_mode or ("language" if primary_language else "role")) == "language" and bool(primary_language)
     return {
         "enabled": True,
         "include_hr": include_hr,
         "selected_mode": selected_mode or ("language" if primary_language else "role"),
         "scored_question_target": question_count,
         "technical_question_target": technical_target,
-        "discovery_questions_asked": 1,
+        "discovery_questions_asked": 0 if language_mode else 1,
         "clarification_turns": 0,
-        "discovery_complete": False,
+        "discovery_complete": language_mode,
         "preferred_language": primary_language,
         "languages": [primary_language] if primary_language else [],
         "frameworks": [],
@@ -2086,7 +2507,7 @@ def _build_adaptive_state(payload: Dict[str, Any], role_blueprint: Dict[str, Any
         ),
         "confidence_summary": "",
         "difficulty_guidance": _difficulty_from_experience(payload.get("experience") or ""),
-        "technical_phase_plan": _build_technical_phase_plan(technical_target),
+        "technical_phase_plan": _build_technical_phase_plan(technical_target, selected_mode or ("language" if primary_language else "role")),
         "last_phase": "",
     }
 
@@ -2097,6 +2518,22 @@ def _adaptive_intro(payload: Dict[str, Any], question_count: int) -> str:
     language = _normalize_text(payload.get("primary_language") or "the selected language")
     category = _normalize_text(payload.get("category") or "").lower()
     subject = language if selected_mode == "language" and language else role
+    if selected_mode == "language" and language:
+        if category == "mock":
+            return (
+                f"Hi, nice to meet you. I will be taking your {language} mock interview today. "
+                "Let us keep this conversational, and feel free to think out loud. "
+                f"We will begin with {language} fundamentals, go one level deeper conceptually, "
+                "and then I will use one practical language question to tailor the rest of the round. "
+                "Because this is a mock round, I may include a short behavioral section near the end as well."
+            )
+        return (
+            f"Hi, nice to meet you. I will be taking your {language} technical interview today. "
+            "Let us keep this conversational, and feel free to think out loud. "
+            f"We will begin with {language} fundamentals, go one level deeper conceptually, "
+            "and then I will use one practical language question to tailor the later questions. "
+            f"I will keep the next {question_count} scored questions aligned to your selected experience level."
+        )
     if category == "mock":
         return (
             f"Hi, nice to meet you. I will be taking your {subject} mock interview today. "
@@ -2112,6 +2549,32 @@ def _adaptive_intro(payload: Dict[str, Any], question_count: int) -> str:
     )
 
 
+def _language_opening_turn(
+    payload: Dict[str, Any],
+    question_count: int,
+    variation: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
+    language = _normalize_text(payload.get("primary_language") or "the selected language")
+    difficulty_guidance = _difficulty_from_experience(payload.get("experience") or "")
+    question_pack = _pick_language_phase_question(
+        language,
+        "warmup",
+        difficulty_guidance,
+        _normalize_text((variation or {}).get("seed") or language),
+        0,
+    )
+    return {
+        "assistant_intro": _adaptive_intro(payload, question_count),
+        "question": question_pack["question"],
+        "question_type": question_pack["question_type"],
+        "expected_points": question_pack["expected_points"],
+        "evaluation_focus": question_pack["evaluation_focus"],
+        "topic_tag": question_pack["topic_tag"],
+        "interview_phase": "warmup",
+        "count_towards_score": True,
+    }
+
+
 def _adaptive_discovery_question(payload: Dict[str, Any], variation: Optional[Dict[str, str]] = None) -> str:
     role = _normalize_text(payload.get("job_role") or "this role")
     selected_mode = _normalize_text(payload.get("selected_mode") or "").lower()
@@ -2120,9 +2583,9 @@ def _adaptive_discovery_question(payload: Dict[str, Any], variation: Optional[Di
     shuffler = random.Random(_normalize_text((variation or {}).get("seed") or role or language or "adaptive"))
     if selected_mode == "language" and language:
         options = [
-            f"Before we begin properly, what kinds of {language} problems, projects, or fundamentals are you most comfortable discussing today?",
-            f"To tailor this {language} round well, which parts of {language} do you feel strongest in from real work or practice?",
-            f"To get the interview aligned properly, what have you used {language} for most confidently so far?",
+            f"Tell me about one real project or problem where you used {language}, and what part of the language mattered most.",
+            f"Tell me about one {language} debugging issue, implementation decision, or feature you handled in real work or practice.",
+            f"Give me one concrete example of using {language} in a project, and explain what technical choice mattered there.",
         ]
         return shuffler.choice(options)
     if any(keyword in role_lower for keyword in ("backend", "full stack", "full-stack", "fullstack", "software engineer", "software developer")):
@@ -2179,7 +2642,7 @@ def _adaptive_total_questions(session: Dict[str, Any]) -> int:
         )
     return max(
         len(session.get("questions", [])),
-        int(state.get("scored_question_target", 0)) + max(1, int(state.get("discovery_questions_asked", 1))),
+        int(state.get("scored_question_target", 0)) + max(0, int(state.get("discovery_questions_asked", 0))),
     )
 
 
@@ -2224,6 +2687,7 @@ def _fallback_stack_analysis(answer_text: str, payload: Dict[str, Any]) -> Dict[
     frameworks = _extract_known_terms(answer_text, KNOWN_FRAMEWORKS)
     databases = _extract_known_terms(answer_text, KNOWN_DATABASES)
     tools = _extract_known_terms(answer_text, KNOWN_TOOLS)
+    language_focus_areas = _extract_known_terms(answer_text, KNOWN_LANGUAGE_FOCUS_AREAS)
     preferred_language = _extract_preferred_language(answer_text, languages)
 
     if not preferred_language and frameworks:
@@ -2259,11 +2723,6 @@ def _fallback_stack_analysis(answer_text: str, payload: Dict[str, Any]) -> Dict[
         clarification_question = (
             f"You mentioned {', '.join(languages[:3])}. Which one would you like me to focus on first for this interview?"
         )
-    elif selected_mode == "language" and preferred_language and not frameworks and not databases and not tools:
-        needs_clarification = True
-        clarification_question = (
-            f"Within {preferred_language}, which areas should I focus on first: fundamentals, debugging, problem solving, APIs, or project experience?"
-        )
     elif not languages and not frameworks:
         needs_clarification = True
         clarification_question = (
@@ -2272,6 +2731,7 @@ def _fallback_stack_analysis(answer_text: str, payload: Dict[str, Any]) -> Dict[
 
     focus_areas = _merge_unique(frameworks, databases)
     focus_areas = _merge_unique(focus_areas, tools)
+    focus_areas = _merge_unique(focus_areas, language_focus_areas)
     if preferred_language:
         focus_areas = _merge_unique([preferred_language], focus_areas)
 
@@ -2371,11 +2831,15 @@ def _adaptive_focus_candidates(session: Dict[str, Any], last_question: Optional[
     state = session.get("meta", {}).get("adaptive_state") or {}
     role_blueprint = session.get("meta", {}).get("role_blueprint") or {}
     selected_options = _safe_list(session.get("context", {}).get("selected_options") or [])
+    selected_mode = _normalize_text(state.get("selected_mode") or session.get("context", {}).get("selected_mode") or "").lower()
+    preferred_language = _normalize_text(state.get("preferred_language") or "")
     candidates: List[str] = []
+    if selected_mode == "language" and preferred_language:
+        candidates = _merge_unique(candidates, [preferred_language])
     candidates = _merge_unique(candidates, state.get("frameworks") or [])
     candidates = _merge_unique(candidates, state.get("databases") or [])
     candidates = _merge_unique(candidates, state.get("tools") or [])
-    candidates = _merge_unique(candidates, [state.get("preferred_language") or ""])
+    candidates = _merge_unique(candidates, [preferred_language])
     candidates = _merge_unique(candidates, selected_options)
     candidates = _merge_unique(candidates, _safe_list(role_blueprint.get("tech_stack")))
     candidates = _merge_unique(candidates, _safe_list(role_blueprint.get("core_areas")))
@@ -2397,13 +2861,17 @@ def _next_adaptive_track(state: Dict[str, Any]) -> str:
 
 def _next_uncovered_topic(session: Dict[str, Any], last_question: Optional[Dict[str, Any]] = None) -> str:
     state = session.get("meta", {}).get("adaptive_state") or {}
+    selected_mode = _normalize_text(state.get("selected_mode") or session.get("context", {}).get("selected_mode") or "").lower()
+    preferred_language = _normalize_text(state.get("preferred_language") or "")
     covered = {item.lower() for item in state.get("covered_topics") or []}
     last_topic = _normalize_text((last_question or {}).get("topic_tag") or "")
+    if selected_mode == "language" and preferred_language and preferred_language.lower() not in covered:
+        return preferred_language
     for candidate in _adaptive_focus_candidates(session, last_question):
         lowered = candidate.lower()
         if lowered not in covered and lowered != last_topic.lower():
             return candidate
-    return last_topic or _normalize_text(state.get("preferred_language") or "") or _normalize_text(session.get("context", {}).get("job_role") or "backend fundamentals")
+    return last_topic or preferred_language or _normalize_text(session.get("context", {}).get("job_role") or "backend fundamentals")
 
 
 def _fallback_adaptive_question_legacy(
@@ -2496,6 +2964,9 @@ def _fallback_adaptive_question(
     difficulty_guidance = _normalize_text(state.get("difficulty_guidance") or "moderate")
     selected_mode = _normalize_text(state.get("selected_mode") or context.get("selected_mode") or "").lower()
     subject = preferred_language if selected_mode == "language" and preferred_language else role
+    language_mode = selected_mode == "language" and bool(preferred_language)
+    variation_seed = _normalize_text((session.get("meta", {}).get("interview_variation") or {}).get("seed") or preferred_language or role)
+    rotation_index = int(state.get("technical_questions_answered", 0))
 
     if desired_track == "hr":
         return {
@@ -2517,21 +2988,37 @@ def _fallback_adaptive_question(
         }
 
     if phase == "warmup":
-        topic_label = topic or preferred_language or "your strongest technical area"
-        return {
-            "assistant_reply": "Thanks. Let us start with something simple and settle into the conversation.",
-            "question": (
+        topic_label = preferred_language if language_mode else (topic or preferred_language or "your strongest technical area")
+        if language_mode:
+            question_pack = _pick_language_phase_question(
+                preferred_language,
+                "warmup",
+                difficulty_guidance,
+                variation_seed,
+                rotation_index,
+            )
+            question_text = question_pack["question"]
+            expected_points = question_pack["expected_points"]
+            evaluation_focus = question_pack["evaluation_focus"]
+            topic_label = question_pack["topic_tag"]
+        else:
+            question_text = (
                 f"Can you explain one core concept in {topic_label} that you are comfortable with, "
                 "and give a small real example of where you would use it?"
-            ),
-            "question_type": "fundamental",
-            "expected_points": [
+            )
+            expected_points = [
                 "clear definition in simple terms",
                 "main purpose or behavior",
                 "one concrete example",
                 "confident and structured explanation",
-            ],
-            "evaluation_focus": ["clarity", "confidence", "fundamentals"],
+            ]
+            evaluation_focus = ["clarity", "confidence", "fundamentals"]
+        return {
+            "assistant_reply": "Thanks. Let us start with something simple and settle into the conversation.",
+            "question": question_text,
+            "question_type": "fundamental",
+            "expected_points": expected_points,
+            "evaluation_focus": evaluation_focus,
             "topic_tag": topic_label,
             "interview_phase": phase,
         }
@@ -2541,8 +3028,15 @@ def _fallback_adaptive_question(
             return {
                 "assistant_reply": "You are on the right track. Let us keep it concrete and stay with the same topic for a moment.",
                 "question": (
-                    f"No problem. Can you give me one real example of using {topic}, what problem it solved, "
-                    "and why you chose that approach?"
+                    (
+                        f"No problem. In {preferred_language}, can you give me one real example of using a core language feature or construct, "
+                        "what problem it solved, and why that approach made sense?"
+                    )
+                    if language_mode
+                    else (
+                        f"No problem. Can you give me one real example of using {topic}, what problem it solved, "
+                        "and why you chose that approach?"
+                    )
                 ),
                 "question_type": "practical",
                 "expected_points": [
@@ -2555,21 +3049,53 @@ def _fallback_adaptive_question(
                 "topic_tag": topic,
                 "interview_phase": phase,
             }
-        return {
-            "assistant_reply": "Good. Let us go one level deeper on that.",
-            "question": (
+        if language_mode:
+            question_pack = _pick_language_phase_question(
+                preferred_language,
+                "concept_deep_dive",
+                difficulty_guidance,
+                variation_seed,
+                rotation_index,
+            )
+            question_text = question_pack["question"]
+            expected_points = question_pack["expected_points"]
+            topic = question_pack["topic_tag"]
+        else:
+            question_text = (
                 f"How is {topic} different from the closest alternative you would compare it with, "
                 "and when would you choose one over the other in a real system?"
-            ),
-            "question_type": "conceptual",
-            "expected_points": [
+            )
+            expected_points = [
                 "clear comparison",
                 "important trade-offs",
                 "real usage choice",
                 "structured reasoning",
-            ],
+            ]
+        return {
+            "assistant_reply": "Good. Let us go one level deeper on that.",
+            "question": question_text,
+            "question_type": "conceptual",
+            "expected_points": expected_points,
             "evaluation_focus": ["conceptual depth", "trade-offs", "clarity"],
             "topic_tag": topic,
+            "interview_phase": phase,
+        }
+
+    if phase == "language_discovery":
+        question_pack = _pick_language_phase_question(
+            preferred_language,
+            "language_discovery",
+            difficulty_guidance,
+            variation_seed,
+            rotation_index,
+        )
+        return {
+            "assistant_reply": "That helps. I want one practical language example before I branch further.",
+            "question": question_pack["question"],
+            "question_type": question_pack["question_type"],
+            "expected_points": question_pack["expected_points"],
+            "evaluation_focus": question_pack["evaluation_focus"],
+            "topic_tag": question_pack["topic_tag"],
             "interview_phase": phase,
         }
 
@@ -2677,6 +3203,14 @@ Rules:
 - Keep assistant_reply gentle, natural, and short, like a real interviewer speaking conversationally.
 - assistant_reply should act like real-time micro-feedback: briefly acknowledge what went well and, if helpful, mention one thing to improve before the next question.
 - Make the wording feel fresh for this session instead of using stock repeated phrasing.
+- If selected mode is language-based, do not jump into random generic technical topics first.
+- If selected mode is language-based, follow this early order before broader applied questions: warmup fundamentals, then concept_deep_dive, then language_discovery.
+- If selected mode is language-based, do not ask the candidate to choose which fundamentals topic they are comfortable with.
+- If selected mode is language-based and the phase is warmup, ask one direct basic or core question from the selected language.
+- If selected mode is language-based and the phase is concept_deep_dive, stay inside the selected language and push into conceptual depth, language behavior, trade-offs, or edge cases based on answer quality and difficulty guidance.
+- If selected mode is language-based and the phase is concept_deep_dive, prefer direct core-language questions instead of asking the candidate to pick a topic.
+- If selected mode is language-based and the phase is language_discovery, learn from one real project, debugging issue, or implementation decision in the selected language instead of asking the candidate which area they feel strongest in.
+- If selected mode is language-based, anchor the early questions in the selected language's fundamentals, concepts, syntax behavior, core constructs, or practical usage patterns before branching out to frameworks, tools, databases, or wider system topics.
 - If desired next track is technical, do not ask HR, self-introduction, motivation, or strengths and weaknesses questions.
 - If desired next track is technical and the phase is warmup, ask a confidence-building fundamentals question that lets the candidate settle in.
 - If desired next track is technical and the phase is concept_deep_dive, adapt strongly to answer quality:
@@ -2731,6 +3265,9 @@ async def _generate_adaptive_opening_turn(
     variation: Optional[Dict[str, str]] = None,
 ) -> Tuple[Dict[str, Any], str]:
     variation = variation or _build_interview_variation(payload)
+    if _normalize_text(payload.get("selected_mode") or "").lower() == "language" and _normalize_text(payload.get("primary_language") or ""):
+        return _language_opening_turn(payload, question_count, variation), "rule-based"
+
     fallback = {
         "assistant_intro": _adaptive_intro(payload, question_count),
         "question": _adaptive_discovery_question(payload, variation),
@@ -2742,6 +3279,8 @@ async def _generate_adaptive_opening_turn(
         ],
         "evaluation_focus": ["clarity", "stack identification", "specificity"],
         "topic_tag": "stack discovery",
+        "interview_phase": "discovery",
+        "count_towards_score": False,
     }
     prompt = f"""
 You are a highly experienced technical interviewer conducting a real-time interview.
@@ -2772,7 +3311,7 @@ Rules:
 - The greeting should feel like a real interviewer opening the round, and it is good to say that the conversation can stay natural and the candidate can think out loud.
 - Ask only one question.
 - Do not assume the candidate's backend language or framework.
-- If selected mode is language-based, ask which projects, problem types, or areas of that language they are most comfortable with.
+- If selected mode is language-based, ask one direct basic or core question from that language instead of asking the candidate to choose a topic.
 - Otherwise ask which languages, frameworks, databases, or tools they are actually comfortable with.
 - Keep the intro concise and warm.
 - Make the wording fresh for this session and avoid stock repeated phrasing.
@@ -2794,6 +3333,8 @@ Rules:
             "expected_points": _safe_list(opening.get("expected_points"))[:5] or fallback["expected_points"],
             "evaluation_focus": _safe_list(opening.get("evaluation_focus"))[:4] or fallback["evaluation_focus"],
             "topic_tag": _normalize_text(opening.get("topic_tag") or fallback["topic_tag"]),
+            "interview_phase": "discovery",
+            "count_towards_score": False,
         }
         if not normalized["question"]:
             raise ProviderError("Adaptive opening turn returned an empty question.")
@@ -2993,8 +3534,9 @@ async def _create_adaptive_interview_session(
             "question_type": opening_turn["question_type"],
             "expected_points": opening_turn["expected_points"],
             "evaluation_focus": opening_turn["evaluation_focus"],
-            "count_towards_score": False,
+            "count_towards_score": bool(opening_turn.get("count_towards_score", False)),
             "topic_tag": opening_turn["topic_tag"],
+            "interview_phase": _normalize_text(opening_turn.get("interview_phase") or ""),
         },
     )
 
@@ -3014,7 +3556,7 @@ async def _create_adaptive_interview_session(
 
 def _hr_intro_message(payload: Dict[str, Any], question_count: int) -> str:
     role = _normalize_text(payload.get("job_role") or "candidate")
-    round_mode = _hr_round_mode(payload).replace("_", " / ")
+    round_mode = _hr_round_label(_hr_round_mode(payload))
     focus = ", ".join(_selected_focus_areas(payload)[:3]) or "communication, leadership, and problem-solving"
     return (
         f"Hi! Nice to meet you. I will be taking your {round_mode} interview for a {role} candidate today. "
@@ -3144,6 +3686,66 @@ def _fallback_hr_adaptive_question(
             "topic_tag": focus_label,
         }
 
+    if phase == "strengths":
+        return {
+            "assistant_reply": assistant_reply,
+            "question": f"What would you say are your strongest qualities for {role}, and can you connect those strengths to a real example from your work, studies, or projects?",
+            "question_type": "conceptual",
+            "expected_points": [
+                "specific strengths named clearly",
+                "evidence through one concrete example",
+                "relevance to the role",
+                "self-awareness about impact",
+            ],
+            "evaluation_focus": ["self-awareness", "role relevance", "specificity"],
+            "topic_tag": "strengths",
+        }
+
+    if phase == "role_fit":
+        return {
+            "assistant_reply": assistant_reply,
+            "question": f"Why do you believe you are a strong fit for {role}, and what would make a team trust you with meaningful responsibility in that role?",
+            "question_type": "conceptual",
+            "expected_points": [
+                "clear role-fit reasoning",
+                "relevant skills or experiences",
+                "understanding of role expectations",
+                "professional confidence without exaggeration",
+            ],
+            "evaluation_focus": ["role fit", "clarity", "professional judgment"],
+            "topic_tag": "role fit",
+        }
+
+    if phase == "workplace":
+        return {
+            "assistant_reply": assistant_reply,
+            "question": "What kind of work environment helps you perform at your best, and how do you stay professional when priorities shift, feedback arrives, or pressure increases?",
+            "question_type": "conceptual",
+            "expected_points": [
+                "clear workplace preferences",
+                "adaptability under change",
+                "professional response to feedback or pressure",
+                "practical habits or examples",
+            ],
+            "evaluation_focus": ["professionalism", "adaptability", "self-awareness"],
+            "topic_tag": "workplace style",
+        }
+
+    if phase == "conflict":
+        return {
+            "assistant_reply": assistant_reply,
+            "question": "Tell me about a time you had a disagreement, conflict, or mismatch in expectations with someone you worked with. How did you handle it, and what happened in the end?",
+            "question_type": "behavioral",
+            "expected_points": [
+                "clear conflict context",
+                "calm and respectful response",
+                "specific action to resolve the issue",
+                "outcome or lesson learned",
+            ],
+            "evaluation_focus": ["conflict handling", "maturity", "STAR structure"],
+            "topic_tag": "conflict management",
+        }
+
     if phase == "situational":
         situational_prompts = {
             "communication": "Imagine you have to explain a delay or mistake to your manager and team. What would you say, and how would you handle the conversation?",
@@ -3270,6 +3872,22 @@ Rules:
 - Sound human, calm, supportive, and realistic.
 - Use the role, experience level, round mode, focus areas, desired focus area, and previous answer.
 - Keep the selected focus areas balanced across the interview instead of drifting into only one area.
+- Respect the selected round mode exactly:
+  - HR: prefer motivation, strengths, role-fit, professionalism, and workplace-style questions.
+  - Behavioral: prefer STAR-based teamwork, leadership, conflict, ownership, and situational questions.
+  - HR + Behavioral: intentionally mix both families across the interview.
+- Respect the desired phase exactly:
+  - introduction: self-introduction, background, or role connection.
+  - background: relevant experience, education, or project foundation.
+  - motivation: why this role, why this path, and what drives the candidate.
+  - strengths: strongest qualities with evidence.
+  - role_fit: why the candidate fits the role or team.
+  - workplace: work style, professionalism, adaptability, feedback, or priorities.
+  - behavioral: one STAR-style real example.
+  - conflict: disagreement, feedback tension, or conflict resolution.
+  - situational: what would you do in a realistic scenario.
+  - communication: how the candidate communicates under pressure or criticism.
+  - closing: ask if the candidate has any questions for the interviewer.
 - If the last answer was vague or scored below 55, ask a simpler follow-up or request specifics before moving on too quickly.
 - If the last answer was strong or scored 80+, you may go deeper or make the next question more challenging.
 - For behavioral questions, encourage STAR structure.
@@ -3680,6 +4298,14 @@ Rules:
     if provider_used != "fallback":
         heuristic_defaults = _heuristic_evaluation(question, answer_text)
         evaluation = _normalize_evaluation_payload(evaluation, heuristic_defaults)
+
+    if (
+        _normalize_text(state.get("selected_mode") or session.get("context", {}).get("selected_mode") or "").lower() == "language"
+        and _normalize_text(question.get("interview_phase") or "") == "language_discovery"
+    ):
+        analysis, analysis_provider = await _analyze_discovery_answer(session, answer_text)
+        _apply_discovery_analysis(state, analysis)
+        session["providers"]["analysis_provider"] = analysis_provider
 
     _register_scored_turn(state, question)
     if int(state.get("scored_questions_answered", 0)) >= int(state.get("scored_question_target", 0)):

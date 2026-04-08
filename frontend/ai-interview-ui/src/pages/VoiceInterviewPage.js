@@ -45,64 +45,144 @@ function buildPayload(context) {
 function formatRoundLabel(value) {
   const normalized = safeText(value);
   if (!normalized) return "";
-  return normalized.replace(/_/g, " / ").replace(/\b\w/g, (char) => char.toUpperCase());
+  const lookup = {
+    hr: "HR",
+    behavioral: "Behavioral",
+    hr_behavioral: "HR + Behavioral",
+    technical: "HR + Behavioral",
+    both: "HR + Behavioral",
+  };
+  return lookup[normalized.toLowerCase()] || normalized.replace(/_/g, " / ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function detectInterviewControlCommand(value) {
   const normalized = clean(value).toLowerCase();
   if (!normalized) return null;
   const wordCount = normalized.split(" ").filter(Boolean).length;
-  if (wordCount > 8) return null;
+  if (wordCount > 14) return null;
 
   const repeatPatterns = [
     /^repeat$/,
     /^repeat again$/,
     /^repeat question$/,
     /^repeat the question$/,
+    /^repeat that question$/,
+    /^repeat this question$/,
+    /^repeat the question again$/,
     /^say again$/,
     /^say that again$/,
     /^say the question again$/,
     /^can you repeat$/,
+    /^can you repeat that$/,
     /^can you repeat the question$/,
+    /^can you repeat this question$/,
+    /^can you repeat that question$/,
+    /^can you please repeat$/,
+    /^can you please repeat the question$/,
     /^please repeat$/,
+    /^please repeat that$/,
     /^please repeat the question$/,
+    /^please repeat this question$/,
     /^one more time$/,
+    /^i did not catch that$/,
+    /^i didn't catch that$/,
     /^pardon$/,
   ];
 
   const clarifyPatterns = [
     /^(i )?do not understand$/,
     /^(i )?do not understand the question$/,
+    /^(i )?do not understand this question$/,
     /^(i )?don't understand$/,
     /^(i )?don't understand the question$/,
+    /^(i )?don't understand this question$/,
     /^(i )?did not understand$/,
     /^(i )?did not understand the question$/,
+    /^(i )?did not understand this question$/,
     /^(i )?didn't understand$/,
     /^(i )?didn't understand the question$/,
+    /^(i )?didn't understand this question$/,
     /^(i )?didnt understand$/,
     /^(i )?didnt understand the question$/,
+    /^(i )?didnt understand this question$/,
     /^(i )?cannot understand$/,
     /^(i )?cannot understand the question$/,
+    /^(i )?cannot understand this question$/,
     /^(i )?can't understand$/,
     /^(i )?can't understand the question$/,
+    /^(i )?can't understand this question$/,
     /^(i )?cant understand$/,
     /^(i )?cant understand the question$/,
+    /^(i )?cant understand this question$/,
     /^can you explain$/,
+    /^can you explain that$/,
     /^can you explain the question$/,
+    /^can you explain this question$/,
+    /^can you please explain$/,
+    /^can you please explain the question$/,
     /^could you explain$/,
+    /^could you explain that$/,
     /^could you explain the question$/,
     /^please explain$/,
+    /^please explain that$/,
     /^please explain the question$/,
+    /^please explain this question$/,
     /^clarify$/,
     /^clarify the question$/,
+    /^clarify this question$/,
     /^simplify$/,
     /^simplify the question$/,
+    /^simplify this question$/,
     /^make it simpler$/,
     /^what do you mean$/,
+    /^what does that mean$/,
+    /^i am confused$/,
+    /^i'm confused$/,
   ];
 
   if (repeatPatterns.some((pattern) => pattern.test(normalized))) return "repeat";
   if (clarifyPatterns.some((pattern) => pattern.test(normalized))) return "clarify";
+  if (
+    [
+      "repeat the question",
+      "repeat that question",
+      "repeat this question",
+      "can you repeat",
+      "could you repeat",
+      "please repeat",
+      "say that again",
+      "one more time",
+      "did not catch that",
+      "didn't catch that",
+    ].some((marker) => normalized.includes(marker))
+  ) {
+    return "repeat";
+  }
+  if (
+    [
+      "do not understand",
+      "don't understand",
+      "did not understand",
+      "didn't understand",
+      "didnt understand",
+      "cannot understand",
+      "can't understand",
+      "cant understand",
+      "explain the question",
+      "explain this question",
+      "clarify the question",
+      "clarify this question",
+      "simplify the question",
+      "simplify this question",
+      "make it simpler",
+      "what do you mean",
+      "what does that mean",
+      "i am confused",
+      "i'm confused",
+    ].some((marker) => normalized.includes(marker))
+  ) {
+    return "clarify";
+  }
   return null;
 }
 
@@ -144,6 +224,131 @@ function controlTurnPrompt(command, questionNumber, questionText) {
     return "";
   }
   return `Question ${questionNumber}. ${safeText(questionText) || "Please continue."}`;
+}
+
+const INTERVIEW_STATUS_STRIP_ITEMS = [
+  { key: "mic-active", label: "Mic Active" },
+  { key: "mic-muted", label: "Mic Muted" },
+  { key: "ai-speaking", label: "AI Speaking" },
+  { key: "evaluating", label: "Evaluating" },
+];
+
+function getInterviewPresenceMeta({
+  started = false,
+  aiSpeaking = false,
+  listening = false,
+  busy = false,
+  fullscreenBlocked = false,
+  speechRecognitionAvailable = false,
+}) {
+  if (!started) {
+    return {
+      activeKey: "mic-muted",
+      bubble: "Ready",
+      headline: "AI interviewer ready",
+      detail: "A live AI interviewer will guide the session, speak the question, and react to each interview stage once the interview begins.",
+    };
+  }
+  if (fullscreenBlocked) {
+    return {
+      activeKey: "mic-muted",
+      bubble: "Paused",
+      headline: "Interview paused",
+      detail: "The session is waiting for fullscreen to be restored before the interviewer continues.",
+    };
+  }
+  if (busy) {
+    return {
+      activeKey: "evaluating",
+      bubble: "Thinking",
+      headline: "Evaluating your answer",
+      detail: "The interviewer is analyzing your latest response and preparing the next question.",
+    };
+  }
+  if (aiSpeaking) {
+    return {
+      activeKey: "ai-speaking",
+      bubble: "Ask",
+      headline: "Asking the current question",
+      detail: "The interviewer is actively speaking, so you can focus on the wording before you answer.",
+    };
+  }
+  if (listening && speechRecognitionAvailable) {
+    return {
+      activeKey: "mic-active",
+      bubble: "Listen",
+      headline: "Mic active and listening",
+      detail: "Your microphone is live right now, and the interviewer is waiting for your answer or command.",
+    };
+  }
+  return {
+    activeKey: "mic-muted",
+    bubble: speechRecognitionAvailable ? "Standby" : "Type",
+    headline: speechRecognitionAvailable ? "Mic muted between turns" : "Voice capture unavailable",
+    detail: speechRecognitionAvailable
+      ? "The interviewer is standing by until the next listen cycle, repeat request, or manual restart."
+      : "Speech recognition is unavailable in this session, so you can type your answer and submit it manually.",
+  };
+}
+
+function InterviewPresenceCard({ presence, showStatusStrip = true }) {
+  return (
+    <div className={`voice-ai-presence-card is-${presence.activeKey}`}>
+      <div className="voice-ai-presence-top">
+        <div className={`voice-ai-character-stage is-${presence.activeKey}`}>
+          <div className="voice-ai-character-halo" />
+          <div className="voice-ai-character-bubble">{presence.bubble}</div>
+          <div className="voice-ai-character-wave voice-ai-character-wave-left" />
+          <div className="voice-ai-character-wave voice-ai-character-wave-right" />
+          <div className="voice-ai-illustration-shell">
+            <div className="voice-ai-illustration-backdrop" />
+            <div className="voice-ai-illustration-orb">
+              <div className="voice-ai-illustration-orb-ring" />
+              <div className="voice-ai-illustration-orb-core" />
+            </div>
+            <div className="voice-ai-illustration-panel">
+              <div className="voice-ai-illustration-panel-top">
+                <span className="voice-ai-illustration-chip" />
+                <span className="voice-ai-illustration-chip voice-ai-illustration-chip-muted" />
+              </div>
+              <div className="voice-ai-illustration-screen">
+                <span className="voice-ai-illustration-line voice-ai-illustration-line-strong" />
+                <span className="voice-ai-illustration-line" />
+                <span className="voice-ai-illustration-line voice-ai-illustration-line-short" />
+              </div>
+              <div className="voice-ai-illustration-meter">
+                <span className="voice-ai-illustration-meter-bar voice-ai-illustration-meter-bar-short" />
+                <span className="voice-ai-illustration-meter-bar" />
+                <span className="voice-ai-illustration-meter-bar voice-ai-illustration-meter-bar-tall" />
+                <span className="voice-ai-illustration-meter-bar" />
+                <span className="voice-ai-illustration-meter-bar voice-ai-illustration-meter-bar-short" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="voice-ai-presence-copy">
+          <div className="voice-ai-mini-label">AI Interviewer</div>
+          <div className="voice-ai-presence-headline">{presence.headline}</div>
+          <p className="voice-ai-copy voice-ai-presence-detail">{presence.detail}</p>
+        </div>
+      </div>
+
+      {showStatusStrip ? (
+        <div className="voice-ai-status-strip">
+          {INTERVIEW_STATUS_STRIP_ITEMS.map((item) => (
+            <div
+              key={item.key}
+              className={`voice-ai-status-pill ${presence.activeKey === item.key ? `is-active is-${item.key}` : ""}`}
+            >
+              <span className="voice-ai-status-dot" />
+              <span>{item.label}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function VoiceInterviewPage() {
@@ -232,6 +437,18 @@ function VoiceInterviewPage() {
   const transcript = clean(`${draft} ${interim}`);
   const title = safeText(payload.job_role || payload.primary_language || payload.category || "Interview");
   const selectionFocus = safeText(payload.focus_areas || payload.selected_options) || "General interview preparation";
+  const readyPresence = getInterviewPresenceMeta({
+    started: false,
+    speechRecognitionAvailable: Boolean(SpeechRecognition),
+  });
+  const livePresence = getInterviewPresenceMeta({
+    started,
+    aiSpeaking,
+    listening,
+    busy,
+    fullscreenBlocked,
+    speechRecognitionAvailable: Boolean(SpeechRecognition),
+  });
 
   const buildLocalFallbackReport = useCallback((endedEarly = false) => {
     const evaluations = history.map((item) => normalizeEvaluation(item));
@@ -554,6 +771,9 @@ function VoiceInterviewPage() {
       setDraft("");
       setInterim("");
       setError("");
+      setIndex(indexRef.current);
+      setQuestion(safeText(question) || "");
+      setQuestionType(safeText(questionType) || "practical");
       setStatus(controlCommand === "repeat" ? "Repeating the current question..." : "Clarifying the current question...");
       await askQuestion({
         preface:
@@ -595,6 +815,21 @@ function VoiceInterviewPage() {
       setInterim("");
 
       if (isControlTurn) {
+        const controlIndex = Number.isFinite(Number(response.data?.question_index))
+          ? Number(response.data.question_index)
+          : indexRef.current;
+        const currentQuestionText =
+          safeText(response.data?.question) ||
+          normalized.next_question ||
+          safeText(question) ||
+          "Please continue.";
+        const currentQuestionType =
+          safeText(response.data?.question_type) ||
+          safeText(questionType) ||
+          "practical";
+        setIndex(controlIndex);
+        setQuestion(currentQuestionText);
+        setQuestionType(currentQuestionType);
         setStatus(controlTurnStatus(normalized.control_command));
         if (shouldEndInterview) {
           await finishInterview({
@@ -607,8 +842,8 @@ function VoiceInterviewPage() {
           preface: safeText(normalized.assistant_reply) || "Sure. I will repeat the same question.",
           promptText: controlTurnPrompt(
             normalized.control_command,
-            indexRef.current + 1,
-            normalized.next_question || safeText(question) || "Please continue."
+            controlIndex + 1,
+            currentQuestionText
           ),
         });
         return;
@@ -868,7 +1103,8 @@ function VoiceInterviewPage() {
               </button>
             </div>
 
-            <div style={{ background: "#111c42", color: "#eef2ff", borderRadius: 28, padding: 26 }}>
+            <div style={{ background: "#111c42", color: "#eef2ff", borderRadius: 28, padding: 26, display: "grid", gap: 18 }}>
+              <InterviewPresenceCard presence={readyPresence} showStatusStrip={false} />
               <h3 style={{ marginTop: 0 }}>Session flow</h3>
               <div style={{ display: "grid", gap: 14, lineHeight: 1.7 }}>
                 <div>1. Start the session and enter fullscreen.</div>
@@ -907,6 +1143,10 @@ function VoiceInterviewPage() {
               </div>
 
               <div style={{ background: "white", borderRadius: 24, padding: 22, boxShadow: "0 20px 50px rgba(88,107,176,0.12)" }}>
+                <InterviewPresenceCard presence={livePresence} />
+              </div>
+
+              <div style={{ background: "white", borderRadius: 24, padding: 22, boxShadow: "0 20px 50px rgba(88,107,176,0.12)" }}>
                 <h3 style={{ marginTop: 0, color: "#1f2a44" }}>Session providers</h3>
                 <div style={{ display: "grid", gap: 10, color: "#4f5873" }}>
                   <div>Generation: {formatProviderName(providers.generation_provider, "generation") || "Pending"}</div>
@@ -935,8 +1175,8 @@ function VoiceInterviewPage() {
                   Live transcript: {safeText(interim || transcript) || "Waiting for your answer..."}
                 </div>
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 18 }}>
-                  <button className="mock-btn" onClick={submitAnswer} disabled={!clean(transcript) || busy || fullscreenBlocked} style={{ background: "linear-gradient(135deg, #059669, #10b981)" }}>
-                    {busy ? "Processing..." : "Submit Now"}
+                  <button className="mock-btn" onClick={submitAnswer} disabled={!clean(transcript) || busy || aiSpeaking || fullscreenBlocked} style={{ background: "linear-gradient(135deg, #059669, #10b981)" }}>
+                    {aiSpeaking ? "Speaking..." : busy ? "Processing..." : "Submit Now"}
                   </button>
                   <button className="go-back-btn" onClick={() => { stopListening(); setDraft(""); setInterim(""); startListening(); }} disabled={busy}>Clear and Retry</button>
                 </div>
