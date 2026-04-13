@@ -15909,6 +15909,108 @@ button {
 
 
 
+.auth-reset-layout {
+
+  grid-template-columns: minmax(320px, 1fr) minmax(360px, 0.9fr);
+
+}
+
+
+
+.auth-reset-showcase {
+
+  justify-content: center;
+
+}
+
+
+
+.auth-reset-card {
+
+  width: min(100%, 440px);
+
+}
+
+
+
+.auth-reset-success {
+
+  padding: 14px 16px;
+
+  border-radius: 16px;
+
+  background: #fff7ed;
+
+  border: 1px solid rgba(251, 146, 60, 0.2);
+
+  color: #9a3412;
+
+  font-size: 0.95rem;
+
+  line-height: 1.6;
+
+}
+
+.auth-reset-devlink {
+
+  margin-top: 10px;
+
+  color: #7c2d12;
+
+}
+
+.auth-reset-devlink button {
+
+  border: 0;
+
+  background: transparent;
+
+  color: #ea580c;
+
+  font-weight: 700;
+
+  cursor: pointer;
+
+  padding: 0;
+
+}
+
+/* Mini topnav only: show full brand text and disable hover effects */
+.category-topnav.mini-topnav .navbar-left {
+
+  flex: 1 1 auto;
+
+  min-width: 0;
+
+}
+
+.category-topnav.mini-topnav .navbar-brand-title span {
+
+  white-space: nowrap;
+
+  overflow: visible;
+
+  text-overflow: clip;
+
+  font-size: 11px;
+
+}
+
+.category-topnav.mini-topnav .navbar-home-link,
+
+.category-topnav.mini-topnav .navbar-home-link:hover {
+
+  background: transparent;
+
+  box-shadow: none;
+
+  transform: none;
+
+}
+
+
+
+
 @keyframes authModernPanelCrossfade {
 
   0% {
@@ -15964,6 +16066,12 @@ button {
   .auth-modern-form-card {
 
     width: 100%;
+
+  }
+
+  .auth-reset-layout {
+
+    grid-template-columns: 1fr;
 
   }
 }

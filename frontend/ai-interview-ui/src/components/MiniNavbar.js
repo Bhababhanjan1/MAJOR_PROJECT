@@ -76,7 +76,7 @@ export default function MiniNavbar() {
   }, []);
 
   return (
-    <div className="category-topnav">
+    <div className="category-topnav mini-topnav">
       <div className="navbar-left">
         <Link to="/" className="navbar-home-link" onClick={closeMobileMenu}>
           <img

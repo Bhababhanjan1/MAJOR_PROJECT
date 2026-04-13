@@ -3,8 +3,12 @@ import base64
 import re
 import zlib
 import difflib
+import uuid
+import smtplib
+from email.message import EmailMessage
 from io import BytesIO
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from typing import Any, Dict
 import numpy as np
 from fastapi import (
     FastAPI,
@@ -12,7 +16,8 @@ from fastapi import (
     File,
     HTTPException,
     Header,
-    Body
+    Body,
+    Query
 )
 from fastapi.middleware.cors import CORSMiddleware
 from jose import jwt, JWTError
@@ -1490,6 +1495,119 @@ async def login(
         }
     }
 
+# ================= FORGOT PASSWORD =================
+@app.post("/auth/forgot-password")
+async def forgot_password(payload: Dict[str, Any] = Body(...)):
+    email = str(payload.get("email", "") or "")
+    normalized_email = email.strip()
+    if not normalized_email:
+        raise HTTPException(status_code=400, detail="Email required")
+
+    user = await users_collection.find_one(
+        {"email": {"$regex": f"^{re.escape(normalized_email)}$", "$options": "i"}}
+    )
+    # Always return a generic response for security reasons.
+    if not user:
+        return {"status": "RESET_LINK_SENT"}
+
+    now = datetime.now(timezone.utc)
+    last_request = user.get("reset_requested_at")
+    if isinstance(last_request, datetime):
+        cooldown_until = last_request.replace(tzinfo=timezone.utc) + timedelta(minutes=1)
+        if cooldown_until > now:
+            remaining = int((cooldown_until - now).total_seconds())
+            raise HTTPException(
+                status_code=429,
+                detail="Please wait 1 minute before requesting another reset link.",
+                headers={"Retry-After": str(max(1, remaining))},
+            )
+    reset_token = uuid.uuid4().hex
+    expires_at = now + timedelta(minutes=5)
+
+    await users_collection.update_one(
+        {"_id": user["_id"]},
+        {"$set": {
+            "reset_token": reset_token,
+            "reset_token_expiry": expires_at,
+            "reset_requested_at": now,
+        }}
+    )
+
+    try:
+        _send_reset_email(user["email"], reset_token)
+    except Exception:
+        pass
+
+    response = {"status": "RESET_LINK_SENT"}
+    if DEV_RETURN_RESET_TOKEN:
+        response["dev_reset_token"] = reset_token
+        response["dev_reset_link"] = f"{RESET_EMAIL_BASE_URL}/reset-password?token={reset_token}"
+    return response
+
+@app.post("/auth/reset-password/verify")
+async def verify_reset_token(payload: Dict[str, Any] = Body(...)):
+    token = str(payload.get("token", "") or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="Reset token required")
+    user = await users_collection.find_one({"reset_token": token})
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+    expires_at = user.get("reset_token_expiry")
+    if not expires_at or not isinstance(expires_at, datetime):
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+    now = datetime.now(timezone.utc)
+    if expires_at.replace(tzinfo=timezone.utc) < now:
+        raise HTTPException(status_code=400, detail="Reset token expired")
+    return {"status": "VALID"}
+
+@app.get("/auth/reset-password/verify")
+async def verify_reset_token_get(token: str = Query(...)):
+    token = token.strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="Reset token required")
+    user = await users_collection.find_one({"reset_token": token})
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+    expires_at = user.get("reset_token_expiry")
+    if not expires_at or not isinstance(expires_at, datetime):
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+    now = datetime.now(timezone.utc)
+    if expires_at.replace(tzinfo=timezone.utc) < now:
+        raise HTTPException(status_code=400, detail="Reset token expired")
+    return {"status": "VALID"}
+
+# ================= RESET PASSWORD =================
+@app.post("/auth/reset-password")
+async def reset_password(payload: Dict[str, Any] = Body(...)):
+    token = str(payload.get("token", "") or "").strip()
+    password = str(payload.get("password", "") or "")
+    if not token:
+        raise HTTPException(status_code=400, detail="Reset token required")
+    if not password:
+        raise HTTPException(status_code=400, detail="Password required")
+
+    user = await users_collection.find_one({"reset_token": token})
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    expires_at = user.get("reset_token_expiry")
+    if not expires_at or not isinstance(expires_at, datetime):
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    now = datetime.now(timezone.utc)
+    if expires_at.replace(tzinfo=timezone.utc) < now:
+        raise HTTPException(status_code=400, detail="Reset token expired")
+
+    await users_collection.update_one(
+        {"_id": user["_id"]},
+        {
+            "$set": {"hashed_password": hash_password(password)},
+            "$unset": {"reset_token": "", "reset_token_expiry": ""},
+        }
+    )
+
+    return {"status": "PASSWORD_RESET"}
+
 # ================= REGISTER FACE =================
 # functionality removed per requirements - endpoint disabled
 # @app.post("/register-face")
@@ -1996,3 +2114,30 @@ async def get_interview_report(session_id: str, authorization: str = Header(...)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to fetch interview report: {exc}")
 
+# ---------------- EMAIL RESET CONFIG ----------------
+RESET_EMAIL_FROM = os.getenv("RESET_EMAIL_FROM", "").strip()
+RESET_EMAIL_SMTP_HOST = os.getenv("RESET_EMAIL_SMTP_HOST", "").strip()
+RESET_EMAIL_SMTP_PORT = int(os.getenv("RESET_EMAIL_SMTP_PORT", "587"))
+RESET_EMAIL_SMTP_USER = os.getenv("RESET_EMAIL_SMTP_USER", "").strip()
+RESET_EMAIL_SMTP_PASS = os.getenv("RESET_EMAIL_SMTP_PASS", "").strip()
+RESET_EMAIL_BASE_URL = os.getenv("RESET_EMAIL_BASE_URL", "http://localhost:3000").rstrip("/")
+DEV_RETURN_RESET_TOKEN = os.getenv("DEV_RETURN_RESET_TOKEN", "false").strip().lower() in {"1", "true", "yes"}
+
+def _send_reset_email(to_email: str, token: str) -> None:
+    if not RESET_EMAIL_FROM or not RESET_EMAIL_SMTP_HOST:
+        return
+    reset_link = f"{RESET_EMAIL_BASE_URL}/reset-password?token={token}"
+    msg = EmailMessage()
+    msg["Subject"] = "Reset your INTERVIEWR password"
+    msg["From"] = RESET_EMAIL_FROM
+    msg["To"] = to_email
+    msg.set_content(
+        "You requested a password reset for INTERVIEWR.\n\n"
+        f"Reset link: {reset_link}\n\n"
+        "If you did not request this, you can ignore this email."
+    )
+    with smtplib.SMTP(RESET_EMAIL_SMTP_HOST, RESET_EMAIL_SMTP_PORT) as server:
+        server.starttls()
+        if RESET_EMAIL_SMTP_USER and RESET_EMAIL_SMTP_PASS:
+            server.login(RESET_EMAIL_SMTP_USER, RESET_EMAIL_SMTP_PASS)
+        server.send_message(msg)

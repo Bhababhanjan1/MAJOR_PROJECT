@@ -18,6 +18,8 @@ import ResumeAnalyzerResults from "./pages/ResumeAnalyzerResults";
 import ResumeInterview from "./pages/ResumeInterview";
 import AboutUs from "./pages/AboutUs";
 import Reports from "./pages/Reports";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 
 /* NEW CATEGORY PAGES */
 import HRInterview from "./pages/HRInterview";
@@ -86,6 +88,8 @@ function AppRoutes({ routeLocation }) {
       {/* ---------------- PUBLIC ROUTES ---------------- */}
       <Route path="/" element={<Home />} />
       <Route path="/auth" element={<Auth />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
 
       {/* ABOUT US PAGE */}
       <Route path="/about" element={<AboutUs />} />
