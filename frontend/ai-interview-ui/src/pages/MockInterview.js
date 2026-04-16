@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import "../App.css";
 import MiniNavbar from "../components/MiniNavbar";
-import mockHero from "../assets/mock_interview.png";
+import mockHero from "../assets/mock.png";
 
 function MockInterview() {
   const navigate = useNavigate();
