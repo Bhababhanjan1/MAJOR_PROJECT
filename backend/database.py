@@ -24,3 +24,4 @@ db = client["apis_db"]
 # ---------------- COLLECTIONS ----------------
 users_collection = db["users"]
 interview_sessions_collection = db["interview_sessions"]
+report_ratings_collection = db["report_ratings"]

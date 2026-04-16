@@ -16,11 +16,32 @@ import "../styles/Footer.css";
 function Footer() {
   const [email, setEmail] = useState("");
   const [subscribeStatus, setSubscribeStatus] = useState(null);
-  const [isSupportOpen, setIsSupportOpen] = useState(false);
-  const supportEmail = "coming-soon@interviewr.com";
-  const supportComposeUrl = `https://mail.google.com/mail/u/0/?fs=1&tf=cm&source=mailto&to=${encodeURIComponent(supportEmail)}`;
-  const defaultSupportComposeUrl =
-    "https://mail.google.com/mail/u/0/?fs=1&tf=cm&source=mailto&to=support@interviewr.com";
+  const supportEmail = "interviewr.ai.support@gmail.com";
+
+  const getSupportComposeUrl = () => {
+    let userEmail = "";
+    try {
+      const rawUser = window.localStorage.getItem("user");
+      const parsedUser = rawUser ? JSON.parse(rawUser) : null;
+      userEmail = String(parsedUser?.email || "").trim();
+    } catch {
+      userEmail = "";
+    }
+
+    const params = new URLSearchParams({
+      view: "cm",
+      fs: "1",
+      tf: "1",
+      to: supportEmail,
+      su: "INTERVIEWR Support",
+    });
+
+    if (userEmail) {
+      params.set("authuser", userEmail);
+    }
+
+    return `https://mail.google.com/mail/?${params.toString()}`;
+  };
   const members = [
     {
       name: "Member 1",
@@ -57,10 +78,10 @@ function Footer() {
     {
       name: "Member 4",
       links: {
-        Facebook: "https://www.facebook.com/",
-        GitHub: "https://github.com/",
-        LinkedIn: "https://www.linkedin.com/",
-        Instagram: "https://www.instagram.com/",
+        Facebook: "https://www.facebook.com/share/1HawVsK43g/",
+        GitHub: "https://github.com/Sushant542004",
+        LinkedIn: "https://www.linkedin.com/in/sushant-dhinda-1b8343275",
+        Instagram: "https://www.instagram.com/__sushant.dhinda__/?hl=en",
       },
     },
   ];
@@ -76,30 +97,12 @@ function Footer() {
       if (document.hidden && document.activeElement instanceof HTMLElement) {
         document.activeElement.blur();
       }
-
-      if (document.hidden) {
-        setIsSupportOpen(false);
-      }
     };
 
     document.addEventListener("visibilitychange", clearFocusedSocialLink);
 
     return () => {
       document.removeEventListener("visibilitychange", clearFocusedSocialLink);
-    };
-  }, []);
-
-  useEffect(() => {
-    const handleDocumentClick = (event) => {
-      if (!event.target.closest(".footer-support-item")) {
-        setIsSupportOpen(false);
-      }
-    };
-
-    document.addEventListener("click", handleDocumentClick);
-
-    return () => {
-      document.removeEventListener("click", handleDocumentClick);
     };
   }, []);
 
@@ -112,10 +115,10 @@ function Footer() {
     }
   };
 
-  const openSupportGmail = (event, composeUrl) => {
+  const openSupportGmail = (event) => {
     event.preventDefault();
-    setIsSupportOpen(false);
-    window.location.href = composeUrl;
+    const composeUrl = getSupportComposeUrl();
+    window.open(composeUrl, "_blank", "noopener,noreferrer");
   };
 
   return (
@@ -222,32 +225,13 @@ function Footer() {
                 <Link to="/#faqs">FAQs</Link>
               </li>
               <li>
-                <div className={`footer-support-item ${isSupportOpen ? "is-open" : ""}`}>
                   <button
                     type="button"
                     className="footer-support-trigger"
-                    onClick={() => setIsSupportOpen((current) => !current)}
-                    aria-expanded={isSupportOpen}
-                    aria-controls="footer-support-panel"
+                    onClick={openSupportGmail}
                   >
                     Contact Support
                   </button>
-                  <div
-                    id="footer-support-panel"
-                    className="footer-support-panel"
-                    aria-hidden={!isSupportOpen}
-                  >
-                    <span className="footer-support-label">Support email</span>
-                  <button
-                    type="button"
-                    className="footer-support-email"
-                    onClick={(event) => openSupportGmail(event, supportComposeUrl)}
-                    >
-                      <Mail size={14} />
-                      <span>{supportEmail}</span>
-                    </button>
-                  </div>
-                </div>
               </li>
             </ul>
           </div>
@@ -260,11 +244,9 @@ function Footer() {
               <button
                 type="button"
                 className="contact-email-button"
-                onClick={(event) =>
-                  openSupportGmail(event, defaultSupportComposeUrl)
-                }
+                onClick={openSupportGmail}
               >
-                support@interviewr.com
+                {supportEmail}
               </button>
             </div>
             <div className="contact-item">

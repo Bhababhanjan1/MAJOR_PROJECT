@@ -7221,6 +7221,9 @@ useEffect(() => {
 
 
   const selectionFocus = safeText(payload.focus_areas || payload.selected_options) || "General interview preparation";
+  const isLiveTimeMode =
+    safeText(sessionMeta.config_mode || payload.config_mode).toLowerCase() === "time" &&
+    Boolean(sessionMeta.time_mode_interval || payload.time_mode_interval);
 
 
 
@@ -7632,7 +7635,11 @@ useEffect(() => {
 
 
 
-                  <span>Question {Math.min(index + 1, total || 1)} of {total || 1}</span>
+                  <span>
+                    {isLiveTimeMode
+                      ? `Question ${Math.max(1, index + 1)} • Time mode`
+                      : `Question ${Math.min(index + 1, total || 1)} of ${total || 1}`}
+                  </span>
 
 
 

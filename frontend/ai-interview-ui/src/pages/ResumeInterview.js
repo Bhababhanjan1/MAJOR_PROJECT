@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import "../App.css";
 import MiniNavbar from "../components/MiniNavbar";
 import resumeHero from "../assets/resume_based_interview.png";
@@ -16,38 +16,30 @@ function ResumeInterview() {
 
   // restore from session storage if available
   React.useEffect(() => {
-    // restore from navigation state first
     const nav = location.state || {};
-    if (nav.resumeName) setResumeName(nav.resumeName);
-    if (nav.resumeText) setResumeText(nav.resumeText);
-    if (nav.resumeDataUrl) setResumeDataUrl(nav.resumeDataUrl);
-    if (nav.jobRole) setJobRole(nav.jobRole);
-    if (nav.stage) setStage(nav.stage);
-
-    // then fallback to persisted storage
     const stored = sessionStorage.getItem("resumeForm");
+    let saved = {};
+
     if (stored) {
       try {
-        const obj = JSON.parse(stored);
-        if (!resumeName && obj.resumeName) setResumeName(obj.resumeName);
-        if (!resumeText && obj.resumeText) setResumeText(obj.resumeText);
-        if (!resumeDataUrl && obj.resumeDataUrl) setResumeDataUrl(obj.resumeDataUrl);
-        if (!jobRole && obj.jobRole) setJobRole(obj.jobRole);
-        if (!stage && obj.stage) setStage(obj.stage);
+        saved = JSON.parse(stored) || {};
       } catch {}
     }
-  }, []);
 
-  const persist = () => {
+    const source = { ...saved, ...nav };
+    if (source.resumeName) setResumeName(source.resumeName);
+    if (source.resumeText) setResumeText(source.resumeText);
+    if (source.resumeDataUrl) setResumeDataUrl(source.resumeDataUrl);
+    if (source.jobRole) setJobRole(source.jobRole);
+    if (source.stage) setStage(source.stage);
+  }, [location.state]);
+
+  // keep storage in sync
+  React.useEffect(() => {
     sessionStorage.setItem(
       "resumeForm",
       JSON.stringify({ resumeName, resumeText, resumeUrl, resumeDataUrl, jobRole, stage })
     );
-  };
-
-  // keep storage in sync
-  React.useEffect(() => {
-    persist();
   }, [resumeName, resumeText, resumeUrl, resumeDataUrl, jobRole, stage]);
 
   const jobOptions = [
@@ -160,6 +152,7 @@ function ResumeInterview() {
               <h2 style={{ marginBottom: 20 }}>Preview Resume</h2>
               {resumeUrl && (
                 <iframe
+                  title="Resume preview"
                   src={resumeUrl}
                   style={{ width: "100%", height: 400, border: "1px solid #d1d5db" }}
                 />

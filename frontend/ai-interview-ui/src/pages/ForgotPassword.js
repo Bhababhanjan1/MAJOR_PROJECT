@@ -49,16 +49,15 @@ function ForgotPassword() {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const requestResetLink = async () => {
     setError(null);
     if (!email) {
       setError("Please enter your email address.");
-      return;
+      return false;
     }
     if (isCoolingDown) {
       setError(`Please wait ${formatCooldown(cooldownRemainingSeconds)} before requesting another link.`);
-      return;
+      return false;
     }
     setLoading(true);
     try {
@@ -76,6 +75,7 @@ function ForgotPassword() {
       setDevLink(maybeLink);
       setCooldownUntil(Date.now() + 60 * 1000);
       setSent(true);
+      return true;
     } catch (err) {
       const retryAfterHeader = err.response?.headers?.["retry-after"];
       const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : 0;
@@ -89,9 +89,15 @@ function ForgotPassword() {
           ? `Unable to send reset link (status ${err.response.status}).`
           : "Unable to send reset link right now. Please check if the backend is running.";
       setError(msg);
+      return false;
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    await requestResetLink();
   };
 
   return (
@@ -164,6 +170,16 @@ function ForgotPassword() {
                     You can request another link in {formatCooldown(cooldownRemainingSeconds)}.
                   </p>
                 )}
+                <div className="auth-reset-actions">
+                  <button
+                    type="button"
+                    className="auth-reset-resend"
+                    disabled={loading || isCoolingDown}
+                    onClick={requestResetLink}
+                  >
+                    {loading ? "Sending..." : "Resend"}
+                  </button>
+                </div>
                 {devLink && (
                   <p className="auth-reset-devlink">
                     Dev link: <button type="button" onClick={() => navigate(toLocalPath(devLink))}>{devLink}</button>

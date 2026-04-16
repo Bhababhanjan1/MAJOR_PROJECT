@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from "react";
-import { useNavigate, Link, useLocation } from "react-router-dom";
+import React, { useState, useRef } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import "../App.css";
 
 // vector icons (simple, professional)
@@ -43,8 +43,6 @@ function Permissions() {
     microphone: false,
     location: false
   });
-  const [requesting, setRequesting] = useState(false);
-  const [audioLevel, setAudioLevel] = useState(0);
   const [audioDb, setAudioDb] = useState(-Infinity);
   const micStreamRef = useRef(null);
 
@@ -52,8 +50,6 @@ function Permissions() {
     setPermissions({ camera: false, microphone: false, location: false });
     setDeniedPerm({ camera: false, microphone: false, location: false });
     setLoadingPerm({ camera: false, microphone: false, location: false });
-    setRequesting(false);
-    setAudioLevel(0);
     setAudioDb(-Infinity);
     setLocationInfo(null);
     if (micStreamRef.current) {
@@ -63,7 +59,6 @@ function Permissions() {
     if (cameraStreamRef.current) {
       cameraStreamRef.current.getTracks().forEach((t) => t.stop());
       cameraStreamRef.current = null;
-      setCameraStream(null);
     }
   };
 
@@ -85,7 +80,6 @@ function Permissions() {
           let values = 0;
           for (let i = 0; i < data.length; i++) values += data[i];
           const average = values / data.length / 255; // 0..1
-          setAudioLevel(average);
           const db = 20 * Math.log10(average + 1e-6); // negative dB
           setAudioDb(db);
           requestAnimationFrame(tick);
@@ -98,7 +92,6 @@ function Permissions() {
     };
   }, [permissions.microphone]);
   const cameraStreamRef = useRef(null);
-  const [cameraStream, setCameraStream] = useState(null);
   const [locationInfo, setLocationInfo] = useState(null);
 
   // reset each time page opens
@@ -211,17 +204,6 @@ function Permissions() {
     );
   };
 
-  const requestPermissions = async () => {
-    // deprecated combined flow still available
-    setRequesting(true);
-    try {
-      await requestCamera();
-      await requestMicrophone();
-    } finally {
-      setRequesting(false);
-    }
-  };
-
   // navigation helpers for footer buttons
   const goHome = () => {
     resetPermissionsState();
@@ -261,7 +243,6 @@ function Permissions() {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ video: true });
           cameraStreamRef.current = stream;
-          setCameraStream(stream);
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
             videoRef.current.muted = true;
@@ -370,9 +351,9 @@ function Permissions() {
       )}
 
       {/* main two‑column section */}
-      <div style={{ display: "flex", flexWrap: "wrap", padding: 30, gap: 30, maxWidth: 1200, margin: "0 auto" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", padding: 30, gap: 30, maxWidth: 1380, margin: "0 auto", width: "100%" }}>
         {/* left: system check list */}
-        <div style={{ flex: "1 1 300px", maxWidth: 600 }}>
+        <div style={{ flex: "1 1 420px", maxWidth: 700 }}>
           <div style={{ background: "white", padding: 20, borderRadius: 8, boxShadow: "0 2px 6px rgba(0,0,0,0.1)" }}>
             <h2 style={{ marginTop: 0 }}>System Check + Verification Photo</h2>
 
@@ -477,7 +458,7 @@ function Permissions() {
         </div>
 
         {/* right: video feed and info panels */}
-        <div style={{ flex: "1 1 300px", display: "flex", flexDirection: "column", gap: 20 }}>
+        <div style={{ flex: "1 1 420px", display: "flex", flexDirection: "column", gap: 20 }}>
           <div style={{ background: "white", padding: 10, borderRadius: 8, boxShadow: "0 2px 6px rgba(0,0,0,0.1)" }}>
             <video
               ref={videoRef}

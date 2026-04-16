@@ -15,6 +15,7 @@ import {
   Radar,
   RefreshCcw,
   Sparkles,
+  Star,
   Target,
 } from "lucide-react";
 import "../App.css";
@@ -235,6 +236,9 @@ function Reports() {
   const [loading, setLoading] = useState(!locationReport);
   const [error, setError] = useState("");
   const [providerStatus, setProviderStatus] = useState(null);
+  const [userRating, setUserRating] = useState(0);
+  const [ratingSubmitting, setRatingSubmitting] = useState(false);
+  const [ratingMessage, setRatingMessage] = useState("");
 
   useEffect(() => {
     if (locationReport || !sessionId) return;
@@ -287,6 +291,37 @@ function Reports() {
       ignore = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!sessionId) return;
+
+    let ignore = false;
+
+    const loadRating = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+
+        const response = await axios.get(`${API_BASE_URL}/report-ratings/${sessionId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (!ignore) {
+          setUserRating(Number(response.data?.rating) || 0);
+        }
+      } catch {
+        if (!ignore) {
+          setUserRating(0);
+        }
+      }
+    };
+
+    loadRating();
+
+    return () => {
+      ignore = true;
+    };
+  }, [sessionId]);
 
   const reportView = useMemo(() => {
     const evaluations = (report?.evaluations || []).filter((item) => item?.count_towards_score !== false);
@@ -429,6 +464,41 @@ function Reports() {
     setTimeout(() => printWindow.print(), 300);
   };
 
+  const handleRatingSubmit = async (ratingValue) => {
+    if (!sessionId || ratingSubmitting) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        setRatingMessage("Please log in again to submit your rating.");
+        return;
+      }
+
+      setRatingSubmitting(true);
+      setRatingMessage("");
+
+      const response = await axios.post(
+        `${API_BASE_URL}/report-ratings/${sessionId}`,
+        { rating: ratingValue },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      setUserRating(Number(response.data?.rating) || ratingValue);
+      setRatingMessage("Thanks for rating this interview report.");
+    } catch (requestError) {
+      setRatingMessage(
+        safeErrorText(
+          requestError.response?.data?.detail ||
+          requestError.response?.data ||
+          requestError.message ||
+          "Unable to save your rating right now."
+        )
+      );
+    } finally {
+      setRatingSubmitting(false);
+    }
+  };
+
   return (
     <div className="report-page-shell">
       <div className="report-page-inner">
@@ -479,6 +549,43 @@ function Reports() {
                       ))}
                     </div>
                   </div>
+                </div>
+              </article>
+
+              <article className="report-rating-card">
+                <div className="report-card-header report-card-header-tight">
+                  <div>
+                    <span className="report-card-eyebrow">Session feedback</span>
+                    <h3>Rate this interview report</h3>
+                  </div>
+                  <Star size={18} />
+                </div>
+
+                <p className="report-rating-copy">
+                  Your rating helps us improve the report quality and updates the average rating shown on the home page.
+                </p>
+
+                <div className="report-rating-stars" aria-label="Rate this report from 1 to 5 stars">
+                  {[1, 2, 3, 4, 5].map((value) => {
+                    const active = value <= userRating;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        className={`report-rating-star ${active ? "is-active" : ""}`}
+                        onClick={() => handleRatingSubmit(value)}
+                        disabled={ratingSubmitting}
+                        aria-label={`Rate ${value} star${value > 1 ? "s" : ""}`}
+                      >
+                        <Star size={22} fill={active ? "currentColor" : "none"} />
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="report-rating-meta">
+                  <span>{userRating ? `Your rating: ${userRating}/5` : "Select a star rating"}</span>
+                  {ratingMessage ? <span>{ratingMessage}</span> : null}
                 </div>
               </article>
 

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { BrainCircuit, BriefcaseBusiness, Code2, FileSearch, Mic2, Sigma } from "lucide-react";
 import analyticsImage from "../assets/Analytics.png";
@@ -8,6 +8,8 @@ import multiTypeInterviewImage from "../assets/multi_type_interview.png";
 import resumeBasedInterviewImage from "../assets/resume_based_interview.png";
 import voiceImage from "../assets/voice.png";
 import "../App.css";
+
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://127.0.0.1:8000";
 
 const howItWorksSteps = [
   {
@@ -153,9 +155,64 @@ const faqItems = [
 
 function Home() {
   const navigate = useNavigate();
+  const categoriesSectionRef = React.useRef(null);
+  const [platformMetrics, setPlatformMetrics] = useState({
+    total_users: 0,
+    average_rating: 0,
+    total_ratings: 0,
+  });
+
+  useEffect(() => {
+    let ignore = false;
+
+    const loadPlatformMetrics = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/platform-metrics`);
+        if (!response.ok) {
+          throw new Error("Failed to load platform metrics");
+        }
+        const data = await response.json();
+        if (!ignore) {
+          setPlatformMetrics({
+            total_users: Number(data?.total_users) || 0,
+            average_rating: Number(data?.average_rating) || 0,
+            total_ratings: Number(data?.total_ratings) || 0,
+          });
+        }
+      } catch {
+        if (!ignore) {
+          setPlatformMetrics({
+            total_users: 0,
+            average_rating: 0,
+            total_ratings: 0,
+          });
+        }
+      }
+    };
+
+    loadPlatformMetrics();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const registeredUsersLabel = new Intl.NumberFormat("en-IN").format(platformMetrics.total_users || 0);
+  const averageRatingLabel = platformMetrics.total_ratings
+    ? platformMetrics.average_rating.toFixed(1)
+    : "0.0";
   const featureSectionRef = React.useRef(null);
   const [typedName, setTypedName] = React.useState("");
   const [activeStep, setActiveStep] = React.useState(0);
+
+  const scrollToCategories = () => {
+    const section = categoriesSectionRef.current;
+    if (!section) return;
+
+    const offset = 96;
+    const top = section.getBoundingClientRect().top + window.scrollY - offset;
+    window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+  };
   const [zoomedImage, setZoomedImage] = React.useState(null);
   const [isZoomAnimating, setIsZoomAnimating] = React.useState(false);
   const [openFaqIndex, setOpenFaqIndex] = React.useState(0);
@@ -307,7 +364,7 @@ function Home() {
           </p>
 
           <div style={{ marginTop: 22 }}>
-            <button className="mock-btn" onClick={() => navigate("/hr-interview")}>Browse Categories</button>
+            <button className="mock-btn" onClick={scrollToCategories}>Browse Categories</button>
             <button
               className="mock-btn"
               style={{ marginLeft: 12, background: "rgba(255,255,255,0.18)", color: "#fff" }}
@@ -347,29 +404,25 @@ function Home() {
           <div>
             <h3 style={{ margin: 0 }}>Trusted by learners worldwide</h3>
             <p style={{ marginTop: 8, color: "#444" }}>
-              Thousands of mock interviews, real feedback and measurable growth.
+              Real user registrations and interview ratings pulled directly from the platform.
             </p>
           </div>
 
           <div style={{ display: "flex", gap: 18, alignItems: "center" }}>
             <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 22, fontWeight: 800 }}>4.8</div>
+              <div style={{ fontSize: 22, fontWeight: 800 }}>{registeredUsersLabel}</div>
+              <div style={{ fontSize: 12, color: "#555" }}>Registered Users</div>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 22, fontWeight: 800 }}>{averageRatingLabel}</div>
               <div style={{ fontSize: 12, color: "#555" }}>Average Rating</div>
-            </div>
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 22, fontWeight: 800 }}>120k+</div>
-              <div style={{ fontSize: 12, color: "#555" }}>Practice Sessions</div>
-            </div>
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 22, fontWeight: 800 }}>95%</div>
-              <div style={{ fontSize: 12, color: "#555" }}>Improved Confidence</div>
             </div>
           </div>
         </div>
       </div>
 
       {/* CATEGORIES */}
-      <div className="container reveal">
+      <div className="container reveal" ref={categoriesSectionRef}>
         <h2 style={{ textAlign: "center" }}>Interview Categories</h2>
 
         <div className="category-grid">

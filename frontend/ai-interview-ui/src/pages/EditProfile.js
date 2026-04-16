@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import ImageCropModal from "../components/ImageCropModal";
 
 function EditProfile() {
   const navigate = useNavigate();
@@ -19,6 +20,7 @@ function EditProfile() {
 
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [cropModalImg, setCropModalImg] = useState(null);
 
   /* ---------- IMAGE UPLOAD ---------- */
   const handleImageUpload = (e) => {
@@ -27,8 +29,7 @@ function EditProfile() {
 
     const reader = new FileReader();
     reader.onloadend = () => {
-      setProfileImage(reader.result);
-      setConfirmRemove(false);
+      setCropModalImg(reader.result);
     };
     reader.readAsDataURL(file);
   };
@@ -110,18 +111,38 @@ function EditProfile() {
         <div style={{ marginBottom: "20px" }}>
           {profileImage ? (
             <>
-              <img
-                src={profileImage}
-                alt="profile"
+              <button
+                type="button"
                 style={{
                   width: "120px",
                   height: "120px",
                   borderRadius: "50%",
-                  objectFit: "cover",
                   display: "block",
-                  margin: "0 auto 10px"
+                  margin: "0 auto 10px",
+                  padding: 0,
+                  border: "none",
+                  background: "transparent",
+                  overflow: "hidden",
+                  cursor: "pointer"
                 }}
-              />
+                onClick={() => {
+                  setCropModalImg(profileImage);
+                  setConfirmRemove(false);
+                }}
+                title="Edit profile image"
+              >
+                <img
+                  src={profileImage}
+                  alt="profile"
+                  style={{
+                    width: "120px",
+                    height: "120px",
+                    borderRadius: "50%",
+                    objectFit: "cover",
+                    display: "block"
+                  }}
+                />
+              </button>
 
               {!confirmRemove ? (
                 <button
@@ -188,6 +209,18 @@ function EditProfile() {
           {loading ? "Saving..." : "Save Changes"}
         </button>
       </div>
+
+      {cropModalImg && (
+        <ImageCropModal
+          image={cropModalImg}
+          onClose={() => setCropModalImg(null)}
+          onSave={async (img) => {
+            setProfileImage(img);
+            setConfirmRemove(false);
+            setCropModalImg(null);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -292,6 +292,21 @@ def _clamp_question_count(value: Any) -> int:
     return max(10, min(count, 30))
 
 
+def _payload_uses_time_mode(payload: Dict[str, Any]) -> bool:
+    config_mode = _normalize_text(payload.get("config_mode") or "").lower()
+    time_limit = payload.get("time_mode_interval") or payload.get("interview_mode_time")
+    return config_mode == "time" and bool(time_limit)
+
+
+def _payload_time_mode_minutes(payload: Dict[str, Any]) -> Optional[int]:
+    interval = payload.get("time_mode_interval") or payload.get("interview_mode_time")
+    try:
+        minutes = int(interval)
+    except (TypeError, ValueError):
+        return None
+    return minutes if minutes > 0 else None
+
+
 def _safe_list(values: Any) -> List[str]:
     if not isinstance(values, list):
         return []
@@ -333,8 +348,11 @@ def _context_summary(payload: Dict[str, Any]) -> str:
         f"Focus areas: {primary_focus}",
         f"Configuration mode: {config_mode}",
         f"Practice type: {payload.get('practice_type') or 'interview'}",
-        f"Question count: {_clamp_question_count(payload.get('question_count'))}",
     ]
+    if _payload_uses_time_mode(payload):
+        parts.append("Question pacing: Keep asking questions until the selected timer ends")
+    else:
+        parts.append(f"Question count: {_clamp_question_count(payload.get('question_count'))}")
     if hr_round:
         parts.append(f"HR round: {hr_round}")
     if config_mode == "time" and time_mode_interval:
@@ -3103,6 +3121,17 @@ def _adaptive_intro(payload: Dict[str, Any], question_count: int) -> str:
     language = _normalize_text(payload.get("primary_language") or "the selected language")
     category = _normalize_text(payload.get("category") or "").lower()
     subject = language if selected_mode == "language" and language else role
+    time_mode_minutes = _payload_time_mode_minutes(payload)
+    time_mode_suffix = (
+        f"We will keep the interview moving for about {time_mode_minutes} minutes, adapting question by question until the timer ends."
+        if time_mode_minutes
+        else f"I will keep the next {question_count} scored questions aligned to your selected experience level."
+    )
+    technical_suffix = (
+        f"We will keep the interview running for about {time_mode_minutes} minutes, and I will adapt the next questions based on your answers until the timer ends."
+        if time_mode_minutes
+        else f"I will keep the interview technical and tailor the next {question_count} scored questions to your strengths."
+    )
     if selected_mode == "language" and language:
         if category == "mock":
             return (
@@ -3117,7 +3146,7 @@ def _adaptive_intro(payload: Dict[str, Any], question_count: int) -> str:
             "Let us keep this conversational, and feel free to think out loud. "
             f"We will begin with {language} fundamentals, go one level deeper conceptually, "
             "and then I will use one practical language question to tailor the later questions. "
-            f"I will keep the next {question_count} scored questions aligned to your selected experience level."
+            f"{time_mode_suffix}"
         )
     if category == "mock":
         return (
@@ -3130,7 +3159,7 @@ def _adaptive_intro(payload: Dict[str, Any], question_count: int) -> str:
         f"Hi, nice to meet you. I will be taking your {subject} technical interview today. "
         "Let us keep this conversational, and feel free to think out loud. "
         "I will first confirm the technical area you want to focus on, then I will adapt the next questions based on your answers. "
-        f"I will keep the interview technical and tailor the next {question_count} scored questions to your strengths."
+        f"{technical_suffix}"
     )
 
 
@@ -3220,6 +3249,12 @@ def _adaptive_total_questions(session: Dict[str, Any]) -> int:
     state = session.get("meta", {}).get("adaptive_state") or {}
     if not state.get("enabled"):
         return len(session.get("questions", []))
+    if _session_uses_time_mode(session):
+        answered = len(session.get("evaluations", []) or [])
+        visible_total = max(len(session.get("questions", [])), answered + 1)
+        if session.get("completed_at") or session.get("summary"):
+            visible_total = max(len(session.get("questions", [])), answered)
+        return max(visible_total, 1)
     if _normalize_text(state.get("mode") or "").lower() == "hr":
         return max(
             len(session.get("questions", [])),
@@ -4038,6 +4073,14 @@ def _session_total_questions(session: Dict[str, Any]) -> int:
     )
 
 
+def _session_uses_time_mode(session: Dict[str, Any]) -> bool:
+    meta = session.get("meta", {}) or {}
+    context = session.get("context", {}) or {}
+    config_mode = _normalize_text(meta.get("config_mode") or context.get("config_mode") or "").lower()
+    time_limit = meta.get("time_mode_interval") or context.get("time_mode_interval")
+    return config_mode == "time" and bool(time_limit)
+
+
 def _build_session_status_payload(session: Dict[str, Any]) -> Dict[str, Any]:
     questions = session.get("questions", []) or []
     evaluations = session.get("evaluations", []) or []
@@ -4143,9 +4186,15 @@ def _hr_intro_message(payload: Dict[str, Any], question_count: int) -> str:
     role = _normalize_text(payload.get("job_role") or "candidate")
     round_mode = _hr_round_label(_hr_round_mode(payload))
     focus = ", ".join(_selected_focus_areas(payload)[:3]) or "communication, leadership, and problem-solving"
+    time_mode_minutes = _payload_time_mode_minutes(payload)
+    pacing = (
+        f"We will keep this interview moving for about {time_mode_minutes} minutes with extra attention on {focus}."
+        if time_mode_minutes
+        else f"We will cover about {question_count} tailored questions with extra attention on {focus}."
+    )
     return (
         f"Hi! Nice to meet you. I will be taking your {round_mode} interview for a {role} candidate today. "
-        f"We will cover about {question_count} tailored questions with extra attention on {focus}."
+        f"{pacing}"
     )
 
 
@@ -4670,7 +4719,10 @@ Rules:
         )
 
     _register_scored_turn(state, question)
-    if int(state.get("scored_questions_answered", 0)) >= int(state.get("scored_question_target", 0)):
+    if (
+        not _session_uses_time_mode(session)
+        and int(state.get("scored_questions_answered", 0)) >= int(state.get("scored_question_target", 0))
+    ):
         return _record_turn_result(
             session,
             question_index,
@@ -4919,7 +4971,10 @@ Rules:
         session["providers"]["analysis_provider"] = analysis_provider
 
     _register_scored_turn(state, question)
-    if int(state.get("scored_questions_answered", 0)) >= int(state.get("scored_question_target", 0)):
+    if (
+        not _session_uses_time_mode(session)
+        and int(state.get("scored_questions_answered", 0)) >= int(state.get("scored_question_target", 0))
+    ):
         evaluation["assistant_reply"] = _adaptive_closing_message(session, question, evaluation)
         return _record_turn_result(
             session,

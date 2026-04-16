@@ -384,7 +384,7 @@ function Topics() {
         </div>
       </div>
 
-      <div className="mock-section" ref={selectionRef}>
+      <div className="mock-section selection-layout-section" ref={selectionRef}>
         <div className="section-title">
           {isHrCategory
             ? "Build Your HR Interview"
@@ -612,7 +612,7 @@ function Topics() {
                       borderRadius: 8,
                       border: "1px solid #cbd5e1",
                       width: "100%",
-                      maxWidth: 320,
+                      maxWidth: 420,
                       background: isLocked ? "#f1f5f9" : "#fff",
                     }}
                   >
@@ -700,7 +700,7 @@ function Topics() {
                       borderRadius: 8,
                       border: "1px solid #cbd5e1",
                       width: "100%",
-                      maxWidth: 320,
+                      maxWidth: 420,
                       background: isLocked ? "#f1f5f9" : "#fff",
                     }}
                   >
@@ -770,7 +770,7 @@ function Topics() {
                       borderRadius: 8,
                       border: "1px solid #cbd5e1",
                       width: "100%",
-                      maxWidth: 320,
+                      maxWidth: 420,
                       background: isLocked ? "#f1f5f9" : "#fff",
                     }}
                   >
@@ -794,7 +794,7 @@ function Topics() {
                       style={{
                         marginTop: 8,
                         width: "100%",
-                        maxWidth: 320,
+                        maxWidth: 420,
                         padding: "10px 12px",
                         borderRadius: 8,
                         border: "1px solid #cbd5e1",
@@ -859,7 +859,7 @@ function Topics() {
                         disabled={isLocked}
                         style={{
                           width: "100%",
-                          maxWidth: 320,
+                          maxWidth: 420,
                           padding: "10px 12px",
                           borderRadius: 8,
                           border: "1px solid #cbd5e1",
@@ -889,7 +889,7 @@ function Topics() {
                     disabled={isLocked}
                     style={{
                       width: "100%",
-                      maxWidth: 320,
+                      maxWidth: 420,
                       padding: "10px 12px",
                       borderRadius: 8,
                       border: "1px solid #cbd5e1",
@@ -924,7 +924,7 @@ function Topics() {
 
             {confirmedSelection ? (
               <div style={{ marginTop: 14, width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-                <div style={{ width: "100%", maxWidth: 620, background: "#eff6ff", borderRadius: 10, padding: "14px 16px", border: "1px solid #bfdbfe", color: "#1e3a8a" }}>
+                <div style={{ width: "100%", maxWidth: 920, background: "#eff6ff", borderRadius: 10, padding: "14px 16px", border: "1px solid #bfdbfe", color: "#1e3a8a" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
                     <div>
                       <div style={{ fontWeight: 700, marginBottom: 4 }}>

@@ -19,6 +19,19 @@ function ResetPassword() {
   const [done, setDone] = useState(false);
   const [verifying, setVerifying] = useState(true);
 
+  const getResetErrorMessage = (detail) => {
+    if (typeof detail !== "string") {
+      return "Reset link is invalid or expired.";
+    }
+    if (detail === "Reset token expired") {
+      return "This reset link has expired. Please request a new one.";
+    }
+    if (detail === "Invalid or expired reset token") {
+      return "This reset link is invalid or has already expired.";
+    }
+    return detail;
+  };
+
   const token = useMemo(() => {
     const params = new URLSearchParams(location.search);
     return params.get("token") || "";
@@ -38,9 +51,7 @@ function ResetPassword() {
         await api.get(`/auth/reset-password/verify?token=${encodeURIComponent(token)}`);
         if (active) setVerifying(false);
       } catch (err) {
-        const msg = typeof err.response?.data?.detail === "string"
-          ? err.response.data.detail
-          : "Reset link is invalid or expired.";
+        const msg = getResetErrorMessage(err.response?.data?.detail);
         if (active) {
           setError(msg);
           setVerifying(false);
@@ -73,9 +84,7 @@ function ResetPassword() {
       await api.post("/auth/reset-password", { token, password });
       setDone(true);
     } catch (err) {
-      const msg = typeof err.response?.data?.detail === "string"
-        ? err.response.data.detail
-        : "Unable to reset password right now.";
+      const msg = getResetErrorMessage(err.response?.data?.detail) || "Unable to reset password right now.";
       setError(msg);
     } finally {
       setLoading(false);

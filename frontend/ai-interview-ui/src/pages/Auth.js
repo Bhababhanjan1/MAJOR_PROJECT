@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, BriefcaseBusiness, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, BriefcaseBusiness, ShieldCheck, Sparkles } from "lucide-react";
 import axios from "axios";
 import "../App.css";
 import interviewrLogo from "../assets/Website Logo.png";
@@ -100,6 +100,14 @@ function Auth() {
 
   return (
     <div className="auth-modern-page">
+      <button
+        type="button"
+        className="auth-modern-back"
+        onClick={() => navigate("/")}
+        aria-label="Back to home"
+      >
+        <ArrowLeft size={18} />
+      </button>
       <div className="auth-modern-layout">
         <section className="auth-modern-showcase">
           <div className="auth-modern-badge">INTERVIEWR</div>

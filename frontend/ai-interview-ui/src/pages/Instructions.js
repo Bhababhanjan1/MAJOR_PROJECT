@@ -41,7 +41,7 @@ function Instructions() {
       </div>
 
       {/* INSTRUCTIONS SECTION */}
-      <div className="mock-section">
+      <div className="mock-section utility-page-section">
         <div className="section-title">Before You Start</div>
 
         <div className="mock-grid">
@@ -60,7 +60,7 @@ function Instructions() {
       </div>
 
       {/* CHECKLIST SECTION */}
-      <div style={{ maxWidth: 1150, margin: "40px auto", padding: "0 30px" }}>
+      <div className="utility-page-band" style={{ margin: "40px auto" }}>
         <div className="mistake-box" style={{ gap: 18 }}>
           <div>
             <h3 style={{ margin: 0 }}>✅ Pre-Interview Checklist</h3>

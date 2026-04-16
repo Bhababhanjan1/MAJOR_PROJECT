@@ -124,7 +124,7 @@ function Interview() {
         {showFullscreenPrompt ? (
           <div
             style={{
-              maxWidth: 900,
+              maxWidth: 1100,
               margin: "0 auto 24px",
               padding: "18px 20px",
               background: "#fff7ed",
@@ -151,7 +151,7 @@ function Interview() {
         ) : null}
 
         <div className="mock-section" style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-          <div style={{ maxWidth: 680, margin: "0 auto", textAlign: "center" }}>
+          <div style={{ maxWidth: 920, margin: "0 auto", textAlign: "center" }}>
             <h1>Ready to Start Your Interview?</h1>
             <p style={{ fontSize: 16, color: "#555", marginTop: 12 }}>
               Stay in fullscreen from the moment you launch the session. Once the live interview room opens, the voice interview page will continue with the same fullscreen protection, startup countdown, and pause confirmation flow.

@@ -84,20 +84,6 @@ function Navbar() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const scrollToAbout = () => {
-    if (location.pathname !== "/") {
-      navigate("/");
-      setTimeout(() => {
-        const aboutSection = document.getElementById("about");
-        aboutSection?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 250);
-      return;
-    }
-
-    const aboutSection = document.getElementById("about");
-    aboutSection?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-
   return (
     <nav className="navbar">
       <div className="navbar-inner">

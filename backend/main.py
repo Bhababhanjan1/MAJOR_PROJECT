@@ -24,7 +24,7 @@ from jose import jwt, JWTError
 from bson import ObjectId
 from bson.errors import InvalidId
 from pymongo.errors import PyMongoError
-from database import users_collection
+from database import users_collection, report_ratings_collection
 from auth_utils import (
     hash_password,
     verify_password,
@@ -2114,6 +2114,102 @@ async def get_interview_report(session_id: str, authorization: str = Header(...)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to fetch interview report: {exc}")
 
+
+@app.get("/platform-metrics")
+async def get_platform_metrics():
+    try:
+        total_users = await users_collection.count_documents({})
+        rating_summary = await report_ratings_collection.aggregate([
+            {
+                "$group": {
+                    "_id": None,
+                    "sum_ratings": {"$sum": "$rating"},
+                    "total_ratings": {"$sum": 1},
+                }
+            }
+        ]).to_list(length=1)
+
+        summary = rating_summary[0] if rating_summary else {}
+        total_ratings = int(summary.get("total_ratings", 0) or 0)
+        sum_ratings = float(summary.get("sum_ratings", 0) or 0)
+        average_rating = round(sum_ratings / total_ratings, 1) if total_ratings else 0.0
+
+        return {
+            "total_users": total_users,
+            "average_rating": average_rating,
+            "total_ratings": total_ratings,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch platform metrics: {exc}")
+
+
+@app.get("/report-ratings/{session_id}")
+async def get_report_rating(session_id: str, authorization: str = Header(...)):
+    try:
+        token = authorization.replace("Bearer ", "")
+        current_user = await get_current_user(token)
+        reports = current_user.get("interview_results", [])
+        match = next((item for item in reports if item.get("session_id") == session_id), None)
+
+        if not match:
+            raise HTTPException(status_code=404, detail="Interview report not found")
+
+        rating_doc = await report_ratings_collection.find_one({
+            "session_id": session_id,
+            "user_id": str(current_user["_id"]),
+        })
+        return {"rating": int(rating_doc.get("rating", 0)) if rating_doc else None}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch report rating: {exc}")
+
+
+@app.post("/report-ratings/{session_id}")
+async def save_report_rating(
+    session_id: str,
+    rating: int = Body(..., embed=True),
+    authorization: str = Header(...),
+):
+    try:
+        if rating < 1 or rating > 5:
+            raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
+
+        token = authorization.replace("Bearer ", "")
+        current_user = await get_current_user(token)
+        reports = current_user.get("interview_results", [])
+        match = next((item for item in reports if item.get("session_id") == session_id), None)
+
+        if not match:
+            raise HTTPException(status_code=404, detail="Interview report not found")
+
+        now = datetime.now(timezone.utc)
+        await report_ratings_collection.update_one(
+            {
+                "session_id": session_id,
+                "user_id": str(current_user["_id"]),
+            },
+            {
+                "$set": {
+                    "rating": int(rating),
+                    "session_id": session_id,
+                    "user_id": str(current_user["_id"]),
+                    "user_email": current_user.get("email", ""),
+                    "updated_at": now,
+                },
+                "$setOnInsert": {
+                    "created_at": now,
+                },
+            },
+            upsert=True,
+        )
+
+        return {"rating": int(rating), "message": "Rating saved successfully"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to save report rating: {exc}")
+
 # ---------------- EMAIL RESET CONFIG ----------------
 RESET_EMAIL_FROM = os.getenv("RESET_EMAIL_FROM", "").strip()
 RESET_EMAIL_SMTP_HOST = os.getenv("RESET_EMAIL_SMTP_HOST", "").strip()
@@ -2134,6 +2230,7 @@ def _send_reset_email(to_email: str, token: str) -> None:
     msg.set_content(
         "You requested a password reset for INTERVIEWR.\n\n"
         f"Reset link: {reset_link}\n\n"
+        "This link is valid for 5 minutes.\n\n"
         "If you did not request this, you can ignore this email."
     )
     with smtplib.SMTP(RESET_EMAIL_SMTP_HOST, RESET_EMAIL_SMTP_PORT) as server:

@@ -149,7 +149,7 @@ function MockInterview() {
       </div>
 
       {showSetup && (
-        <div className="mock-section" ref={setupRef}>
+        <div className="mock-section selection-layout-section" ref={setupRef}>
           <div className="section-title">Mock Interview Setup</div>
           <div className="selection-window">
             <div className="selection-window-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -301,7 +301,7 @@ function MockInterview() {
                     borderRadius: 8,
                     border: '1px solid #cbd5e1',
                     width: '100%',
-                    maxWidth: 320,
+                    maxWidth: 420,
                     background: isLocked ? '#f1f5f9' : '#fff'
                   }}
                 >
