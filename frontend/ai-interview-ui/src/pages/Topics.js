@@ -239,11 +239,18 @@ function Topics() {
       return;
     }
     if (selectedMode === "language") {
-      setSelectedOptions((previous) =>
-        previous.includes(item)
-          ? previous.filter((value) => value !== item)
-          : [...previous, item]
-      );
+      setSelectedOptions((previous) => {
+        // If item is already selected, remove it
+        if (previous.includes(item)) {
+          return previous.filter((value) => value !== item);
+        }
+        // If item is not selected and we haven't reached limit of 3, add it
+        if (previous.length < 3) {
+          return [...previous, item];
+        }
+        // If we've reached the limit, don't add
+        return previous;
+      });
       return;
     }
     if (selectedMode === "hr") {
@@ -538,6 +545,8 @@ function Topics() {
                 {modeOptions.map((option) => {
                   const checked = isHrCategory ? jobRole === option : selectedOptions.includes(option);
                   const inputType = selectedMode === "language" ? "checkbox" : "radio";
+                  const isLimitReached = selectedMode === "language" && selectedOptions.length >= 3 && !checked;
+                  const canSelect = !isLimitReached && !isLocked;
 
                   return (
                     <label
@@ -548,17 +557,18 @@ function Topics() {
                         gap: 8,
                         padding: 12,
                         borderRadius: 10,
-                        border: checked ? "2px solid #2563eb" : "1px solid #d1d5db",
-                        background: checked ? "rgba(37,99,235,0.08)" : "#fff",
-                        cursor: "pointer",
+                        border: checked ? "2px solid #2563eb" : isLimitReached ? "1px solid #cbd5e1" : "1px solid #d1d5db",
+                        background: checked ? "rgba(37,99,235,0.08)" : isLimitReached ? "rgba(0,0,0,0.03)" : "#fff",
+                        cursor: canSelect ? "pointer" : "not-allowed",
+                        opacity: isLimitReached ? 0.6 : 1,
                       }}
                     >
                       <input
                         type={inputType}
                         name={selectedMode === "language" ? `select-${option}` : "select-option"}
                         checked={checked}
-                        onChange={() => !isLocked && toggleSelectionOption(option)}
-                        disabled={isLocked}
+                        onChange={() => !isLocked && !isLimitReached && toggleSelectionOption(option)}
+                        disabled={isLocked || isLimitReached}
                       />
                       <span>{option}</span>
                     </label>
@@ -566,8 +576,13 @@ function Topics() {
                 })}
               </div>
 
-              <div style={{ marginTop: 14, fontSize: 14, color: "#334155" }}>
-                Selected: {currentSelectionLabel}
+              <div style={{ marginTop: 14, fontSize: 14, color: "#334155", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>Selected: {currentSelectionLabel}</div>
+                {selectedMode === "language" && (
+                  <div style={{ fontWeight: 600, color: selectedOptions.length >= 3 ? "#dc2626" : "#0f172a" }}>
+                    {selectedOptions.length}/3 languages
+                  </div>
+                )}
               </div>
             </div>
 
@@ -913,10 +928,10 @@ function Topics() {
               className="topic-action-btn"
               style={{
                 marginTop: 6,
-                opacity: isSelectionReady ? 1 : 0.5,
-                cursor: isSelectionReady ? "pointer" : "not-allowed",
+                opacity: isSelectionReady && !confirmedSelection ? 1 : 0.5,
+                cursor: isSelectionReady && !confirmedSelection ? "pointer" : "not-allowed",
               }}
-              disabled={!isSelectionReady}
+              disabled={!isSelectionReady || confirmedSelection !== null}
               onClick={handleConfirmSelection}
             >
               Confirm Selection
@@ -924,69 +939,90 @@ function Topics() {
 
             {confirmedSelection ? (
               <div style={{ marginTop: 14, width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-                <div style={{ width: "100%", maxWidth: 920, background: "#eff6ff", borderRadius: 10, padding: "14px 16px", border: "1px solid #bfdbfe", color: "#1e3a8a" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-                    <div>
-                      <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                <div style={{ width: "100%", maxWidth: 600, background: "#eff6ff", borderRadius: 10, padding: "20px", border: "1px solid #bfdbfe", color: "#1e3a8a" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    {/* Selected Role/Languages */}
+                    <div style={{ background: "#fff", borderRadius: 8, padding: 12, border: "1px solid #bfdbfe", textAlign: "center" }}>
+                      <div style={{ fontWeight: 700, marginBottom: 8, fontSize: "0.85rem", color: "#1e3a8a" }}>
                         {isHrCategory ? "Selected role:" : confirmedSelection.mode === "role" ? "Selected role:" : "Selected language(s):"}
                       </div>
-                      <div style={{ marginLeft: 6, color: "#0f172a" }}>
+                      <div style={{ color: "#0f172a", fontSize: "0.95rem" }}>
                         {isHrCategory ? confirmedSelection.jobRole : confirmedSelection.options.join(", ")}
                       </div>
-
-                      {isHrCategory ? (
-                        <>
-                          <div style={{ fontWeight: 700, marginTop: 8 }}>Interview round:</div>
-                          <div style={{ marginLeft: 6, color: "#0f172a" }}>{confirmedSelection.hrRoundLabel}</div>
-                          <div style={{ fontWeight: 700, marginTop: 8 }}>Focus areas:</div>
-                          <div style={{ marginLeft: 6, color: "#0f172a" }}>{confirmedSelection.focusAreas.join(", ")}</div>
-                        </>
-                      ) : null}
-
-                      <div style={{ fontWeight: 700, marginTop: 8 }}>Experience:</div>
-                      <div style={{ marginLeft: 6, color: "#0f172a" }}>{confirmedSelection.experience}</div>
-
-                      <div style={{ fontWeight: 700, marginTop: 8 }}>Config Mode:</div>
-                      <div style={{ marginLeft: 6, color: "#0f172a" }}>
-                        {confirmedSelection.configMode === "question" ? "Question Mode" : "Time Mode"}
-                      </div>
-
-                      {confirmedSelection.configMode === "question" ? (
-                        <>
-                          <div style={{ fontWeight: 700, marginTop: 8 }}>Questions:</div>
-                          <div style={{ marginLeft: 6, color: "#0f172a" }}>
-                            {confirmedSelection.questionCount}
-                            {confirmedSelection.customQuestionCount
-                              ? ` (custom: ${confirmedSelection.customQuestionCount})`
-                              : ""}
-                          </div>
-                        </>
-                      ) : null}
-
-                      {confirmedSelection.configMode === "time" ? (
-                        <>
-                          <div style={{ fontWeight: 700, marginTop: 8 }}>Time Mode Interval:</div>
-                          <div style={{ marginLeft: 6, color: "#0f172a" }}>
-                            {confirmedSelection.timeModeInterval || "n/a"} minutes
-                          </div>
-                        </>
-                      ) : null}
-
-                      <div style={{ fontWeight: 700, marginTop: 8 }}>Practice Type:</div>
-                      <div style={{ marginLeft: 6, color: "#0f172a" }}>
-                        {confirmedSelection.practiceType === "practice" ? "Practice Mode" : "Interview Mode"}
-                      </div>
-
-                      {confirmedSelection.practiceType === "interview" ? (
-                        <>
-                          <div style={{ fontWeight: 700, marginTop: 8 }}>Interview Timer:</div>
-                          <div style={{ marginLeft: 6, color: "#0f172a" }}>
-                            {confirmedSelection.interviewModeTime || "n/a"} minutes
-                          </div>
-                        </>
-                      ) : null}
                     </div>
 
+                    {/* Experience */}
+                    <div style={{ background: "#fff", borderRadius: 8, padding: 12, border: "1px solid #bfdbfe", textAlign: "center" }}>
+                      <div style={{ fontWeight: 700, marginBottom: 8, fontSize: "0.85rem", color: "#1e3a8a" }}>Experience</div>
+                      <div style={{ color: "#0f172a", fontSize: "0.95rem" }}>
+                        {confirmedSelection.experience}
+                      </div>
+                    </div>
+
+                    {/* Config Mode */}
+                    <div style={{ background: "#fff", borderRadius: 8, padding: 12, border: "1px solid #bfdbfe", textAlign: "center" }}>
+                      <div style={{ fontWeight: 700, marginBottom: 8, fontSize: "0.85rem", color: "#1e3a8a" }}>Config Mode</div>
+                      <div style={{ color: "#0f172a", fontSize: "0.95rem" }}>
+                        {confirmedSelection.configMode === "question" ? "Question Mode" : "Time Mode"}
+                      </div>
+                    </div>
+
+                    {/* Practice Type */}
+                    <div style={{ background: "#fff", borderRadius: 8, padding: 12, border: "1px solid #bfdbfe", textAlign: "center" }}>
+                      <div style={{ fontWeight: 700, marginBottom: 8, fontSize: "0.85rem", color: "#1e3a8a" }}>Practice Type</div>
+                      <div style={{ color: "#0f172a", fontSize: "0.95rem" }}>
+                        {confirmedSelection.practiceType === "practice" ? "Practice Mode" : "Interview Mode"}
+                      </div>
+                    </div>
+
+                    {/* Questions or Time Interval */}
+                    {confirmedSelection.configMode === "question" ? (
+                      <div style={{ background: "#fff", borderRadius: 8, padding: 12, border: "1px solid #bfdbfe", textAlign: "center" }}>
+                        <div style={{ fontWeight: 700, marginBottom: 8, fontSize: "0.85rem", color: "#1e3a8a" }}>Questions</div>
+                        <div style={{ color: "#0f172a", fontSize: "0.95rem" }}>
+                          {confirmedSelection.questionCount}
+                          {confirmedSelection.customQuestionCount
+                            ? ` (custom: ${confirmedSelection.customQuestionCount})`
+                            : ""}
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ background: "#fff", borderRadius: 8, padding: 12, border: "1px solid #bfdbfe", textAlign: "center" }}>
+                        <div style={{ fontWeight: 700, marginBottom: 8, fontSize: "0.85rem", color: "#1e3a8a" }}>Time Mode Interval</div>
+                        <div style={{ color: "#0f172a", fontSize: "0.95rem" }}>
+                          {confirmedSelection.timeModeInterval || "n/a"} minutes
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Interview Timer */}
+                    {confirmedSelection.practiceType === "interview" && (
+                      <div style={{ background: "#fff", borderRadius: 8, padding: 12, border: "1px solid #bfdbfe", textAlign: "center" }}>
+                        <div style={{ fontWeight: 700, marginBottom: 8, fontSize: "0.85rem", color: "#1e3a8a" }}>Interview Timer</div>
+                        <div style={{ color: "#0f172a", fontSize: "0.95rem" }}>
+                          {confirmedSelection.interviewModeTime || "n/a"} minutes
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Interview Round (HR only) */}
+                    {isHrCategory && (
+                      <div style={{ background: "#fff", borderRadius: 8, padding: 12, border: "1px solid #bfdbfe", textAlign: "center" }}>
+                        <div style={{ fontWeight: 700, marginBottom: 8, fontSize: "0.85rem", color: "#1e3a8a" }}>Interview Round</div>
+                        <div style={{ color: "#0f172a", fontSize: "0.95rem" }}>{confirmedSelection.hrRoundLabel}</div>
+                      </div>
+                    )}
+
+                    {/* Focus Areas (HR only) */}
+                    {isHrCategory && (
+                      <div style={{ background: "#fff", borderRadius: 8, padding: 12, border: "1px solid #bfdbfe", textAlign: "center" }}>
+                        <div style={{ fontWeight: 700, marginBottom: 8, fontSize: "0.85rem", color: "#1e3a8a" }}>Focus Areas</div>
+                        <div style={{ color: "#0f172a", fontSize: "0.95rem" }}>{confirmedSelection.focusAreas.join(", ")}</div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "center", marginTop: 18 }}>
                     <button
                       className="topic-action-btn secondary"
                       onClick={() => resetConfiguration(selectedRound)}
@@ -997,7 +1033,6 @@ function Topics() {
                         background: "#ec4899",
                         color: "#fff",
                         boxShadow: "0 8px 15px rgba(236,72,153,0.25)",
-                        alignSelf: "center",
                       }}
                     >
                       Reset Selections

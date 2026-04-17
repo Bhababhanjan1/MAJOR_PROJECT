@@ -204,9 +204,12 @@
   border-radius: 2px;
 }
 
-/* ===== BRAND SECTION ===== */
 .footer-brand {
   gap: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
 }
 
 .footer-logo {
@@ -218,7 +221,7 @@
   font-size: 20px;
   font-weight: 800;
   transition: transform 0.3s ease;
-  width: fit-content;
+  justify-content: center;
 }
 
 .footer-logo:hover {
@@ -242,13 +245,15 @@
   line-height: 1.6;
   margin: 0;
   max-width: 340px;
+  text-align: center;
 }
 
 .footer-social {
   display: flex;
   gap: 10px;
-  width: fit-content;
+  width: 100%;
   flex-wrap: wrap;
+  justify-content: center;
 }
 
 .social-link-group {

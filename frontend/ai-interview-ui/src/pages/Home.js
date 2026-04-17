@@ -7,6 +7,7 @@ import mockInterviewImage from "../assets/mock_interview.png";
 import multiTypeInterviewImage from "../assets/multi_type_interview.png";
 import resumeBasedInterviewImage from "../assets/resume_based_interview.png";
 import voiceImage from "../assets/voice.png";
+import homeImage from "../assets/home.png";
 import "../App.css";
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || "http://127.0.0.1:8000";
@@ -376,25 +377,7 @@ function Home() {
         </div>
 
         <div>
-          <svg className="mock-hero-img" viewBox="0 0 600 400" xmlns="http://www.w3.org/2000/svg" aria-label="Interview preparation illustration">
-            <defs>
-              <linearGradient id="g1" x1="0" x2="1">
-                <stop offset="0" stopColor="#fff" stopOpacity="0.18" />
-                <stop offset="1" stopColor="#fff" stopOpacity="0.06" />
-              </linearGradient>
-            </defs>
-            <rect x="0" y="0" width="600" height="400" rx="24" fill="url(#g1)" />
-            <g transform="translate(40,24)">
-              <rect x="0" y="0" width="260" height="160" rx="14" fill="#fff" opacity="0.12" />
-              <rect x="300" y="40" width="220" height="120" rx="14" fill="#fff" opacity="0.08" />
-              <circle cx="190" cy="220" r="70" fill="#fff" opacity="0.06" />
-              <g transform="translate(40,16)" fill="#fff" opacity="0.95">
-                <rect x="8" y="8" width="44" height="8" rx="4" />
-                <rect x="8" y="26" width="110" height="8" rx="4" />
-                <rect x="8" y="44" width="80" height="8" rx="4" />
-              </g>
-            </g>
-          </svg>
+          <img src={homeImage} alt="Interview preparation illustration" className="mock-hero-img" />
         </div>
       </div>
 
@@ -709,7 +692,7 @@ function Home() {
           <button
             className="mock-btn"
             style={{ marginTop: 24 }}
-            onClick={() => navigate("/mock-interview")}
+            onClick={() => navigate("/hr-interview")}
           >
             Start Interview
           </button>
@@ -763,13 +746,24 @@ function Home() {
 
           <aside id="contact-support" className="support-panel">
             <span className="support-panel-kicker">Contact support</span>
-            <h3>We can connect a dedicated support email here next</h3>
+            <h3>Get in touch with our support team</h3>
             <p>
-              This area is now ready for your official support mail. Once you share the email address, I’ll connect it so clicking it opens Gmail or the user’s default mail app directly with a new message.
+              Have questions or need help? We're here to assist you. Reach out to our support team via email and we'll get back to you as soon as possible.
             </p>
             <div className="support-placeholder-card">
               <span className="support-placeholder-label">Support email</span>
-              <span className="support-placeholder-value">Coming soon</span>
+              <a
+                href="mailto:interviewr.ai.support@gmail.com"
+                className="support-email-link"
+                style={{
+                  color: "#2563eb",
+                  textDecoration: "none",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                interviewr.ai.support@gmail.com
+              </a>
             </div>
           </aside>
         </div>
