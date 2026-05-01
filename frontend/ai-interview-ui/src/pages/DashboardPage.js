@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import "../App.css";
 import { normalizeReport, safeErrorText, safeScore, safeText } from "../utils/interviewReport";
+import { useScrollToTop } from "../hooks/useScrollToTop";
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || "http://127.0.0.1:8000";
 
@@ -33,15 +34,29 @@ const CATEGORY_DEFINITIONS = [
   { key: "aptitude", label: "Aptitude / Coding", shortLabel: "Code", color: "#0891b2", softColor: "rgba(8, 145, 178, 0.12)" },
 ];
 
+const APTITUDE_TYPE_LABELS = {
+  "advanced-quant": "Advanced Quantitative Ability",
+  "aptitude-mock": "Aptitude Mock",
+  aptitude: "Aptitude",
+  coding: "Coding",
+  "coding-advanced": "Coding Advanced",
+  "coding-basic": "Coding Basic",
+  "computer-fundamentals": "Computer Fundamentals",
+  reasoning: "Reasoning",
+  verbal: "Qualitative / Verbal",
+};
+
 function clampNumber(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
 function getPrimaryTrack(report) {
-  const categorySource = safeText(report?.context?.category || report?.context?.selected_mode || report?.context?.practice_type || "").toLowerCase();
+  const categoryKey = classifyReportCategory(report);
 
-  if (categorySource.includes("behav") || categorySource.includes("hr")) return "hr";
-  if (categorySource.includes("resume") || categorySource.includes("library")) return "mock";
+  if (categoryKey === "behavioral") return "hr";
+  if (categoryKey === "mock") return "mock";
+  if (categoryKey === "resume") return "resume";
+  if (categoryKey === "aptitude") return "aptitude";
   return "technical";
 }
 
@@ -67,12 +82,17 @@ function getResumeAnalyzerActivity() {
 function classifyReportCategory(report) {
   const context = report?.context || {};
   const source = safeText([
+    report?.interview_type,
+    report?.type,
     context.category,
     context.selected_mode,
     context.practice_type,
     context.job_role,
     context.primary_language,
     context.config_mode,
+    context.hr_round,
+    context.focus_areas,
+    context.selected_options,
   ]).toLowerCase();
 
   if (source.includes("resume")) return "resume";
@@ -80,6 +100,69 @@ function classifyReportCategory(report) {
   if (source.includes("mock")) return "mock";
   if (source.includes("behav") || source.includes("hr")) return "behavioral";
   return "technical";
+}
+
+function getReportCategoryDefinition(report) {
+  const categoryKey = classifyReportCategory(report);
+  return CATEGORY_DEFINITIONS.find((category) => category.key === categoryKey) || CATEGORY_DEFINITIONS[0];
+}
+
+function formatTypeLabel(value) {
+  const cleanValue = safeText(value);
+  if (!cleanValue) return "";
+
+  const lookupKey = cleanValue.toLowerCase();
+  if (APTITUDE_TYPE_LABELS[lookupKey]) return APTITUDE_TYPE_LABELS[lookupKey];
+
+  return cleanValue
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function getReportFocusLabel(report) {
+  const context = report?.context || {};
+  const selectedOptions = Array.isArray(context.selected_options) ? context.selected_options : [];
+  const focusAreas = Array.isArray(context.focus_areas) ? context.focus_areas : [];
+  const categoryKey = classifyReportCategory(report);
+
+  if (categoryKey === "aptitude") {
+    return formatTypeLabel(
+      context.aptitude_type ||
+      context.section_title ||
+      context.section_id ||
+      context.test_type ||
+      context.coding_level ||
+      context.mode ||
+      selectedOptions[0] ||
+      focusAreas[0] ||
+      context.category ||
+      "Aptitude"
+    );
+  }
+
+  return safeText(
+    context.job_role ||
+    context.primary_language ||
+    selectedOptions[0] ||
+    focusAreas[0] ||
+    context.hr_round ||
+    context.category ||
+    "General"
+  );
+}
+
+function formatReportDate(report) {
+  const rawDate = safeText(report?.completed_at || report?.created_at);
+  if (!rawDate) return "Recent";
+
+  const parsedDate = new Date(rawDate);
+  if (Number.isNaN(parsedDate.getTime())) return rawDate;
+
+  return parsedDate.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 function buildCategoryStats(reports = [], resumeAnalyzerActivity = { count: 0 }) {
@@ -212,11 +295,13 @@ function buildRecommendationModel(reports = [], topicPerformance = []) {
   const nextOption = nextMode === "language"
     ? safeText(latestReport.context?.primary_language || selectedOptions[0] || weakestTopic?.topic || role)
     : safeText(latestReport.context?.job_role || selectedOptions[0] || weakestTopic?.topic || role);
-  const nextInterviewLabel = nextTrack === "hr"
-    ? "Behavioral recovery round"
-    : nextTrack === "mock"
-      ? "Mock consolidation round"
-      : "Technical recovery round";
+  const nextInterviewLabel = {
+    aptitude: "Aptitude recovery round",
+    hr: "Behavioral recovery round",
+    mock: "Mock consolidation round",
+    resume: "Resume-focused recovery round",
+    technical: "Technical recovery round",
+  }[nextTrack] || "Technical recovery round";
 
   const plan = [
     {
@@ -242,15 +327,15 @@ function buildRecommendationModel(reports = [], topicPerformance = []) {
   return {
     coachSummary: `Based on your recent ${role} interviews, the AI coach sees the biggest opportunity in ${primaryFocus}. The next round should be narrower and more intentional so you improve faster instead of repeating broad practice.`,
     focusAreas: topGaps,
-    nextInterview: {
-      category: nextTrack,
-      description: `Recommended next session: a ${nextInterviewLabel.toLowerCase()} focused on ${nextOption}.`,
-      label: nextInterviewLabel,
-      mode: nextMode,
-      option: nextOption,
-      practiceType: topGaps.length ? "interview" : "practice",
-      trackLabel: nextTrack === "hr" ? "HR / Behavioral" : nextTrack === "mock" ? "Mock" : "Technical",
-    },
+      nextInterview: {
+        category: nextTrack,
+        description: `Recommended next session: a ${nextInterviewLabel.toLowerCase()} focused on ${nextOption}.`,
+        label: nextInterviewLabel,
+        mode: nextMode,
+        option: nextOption,
+        practiceType: topGaps.length ? "interview" : "practice",
+        trackLabel: getReportCategoryDefinition(latestReport).label,
+      },
     plan,
     strengths: topStrengths,
   };
@@ -570,6 +655,7 @@ function MetricCard({ eyebrow, title, value, trend, meta, icon: Icon, tone }) {
 }
 
 function DashboardPage() {
+  useScrollToTop();
   const navigate = useNavigate();
   const [metrics, setMetrics] = useState({});
   const [reports, setReports] = useState([]);
@@ -733,15 +819,18 @@ function DashboardPage() {
       },
     ];
 
-    const recentReports = reports.slice(0, 6).map((report, index) => {
+    const reportRows = reports.map((report, index) => {
       const score = safeScore(report.overall_score);
-      const sessionLabel = safeText(report.context?.job_role || report.context?.primary_language || report.context?.category || "Interview");
-      const modeLabel = safeText(report.context?.selected_mode || report.context?.category || "Interview");
+      const category = getReportCategoryDefinition(report);
+      const sessionLabel = getReportFocusLabel(report);
+      const modeLabel = category.label;
       const duration = safeText(report.context?.interview_mode_time || report.context?.time_mode_interval || "10 min");
       const summary = safeText(report.summary) || "Review generated. Inspect the detailed feedback for strengths and focus areas.";
       const scoreTone = score >= 75 ? "success" : score >= 50 ? "warning" : "danger";
 
       return {
+        categoryKey: category.key,
+        dateLabel: formatReportDate(report),
         id: report.session_id || `${sessionLabel}-${index}`,
         modeLabel,
         score,
@@ -752,7 +841,8 @@ function DashboardPage() {
         report,
       };
     });
-    const recentHeroReports = recentReports.slice(0, 3);
+    const recentHeroReports = reportRows.slice(0, 3);
+    const pastInterviewReports = reportRows;
 
     return {
       accuracyTrend,
@@ -761,6 +851,7 @@ function DashboardPage() {
       categoryPerformance,
       categoryStats,
       consistency,
+      pastInterviewReports,
       recentHeroReports,
       latestReport,
       profileSummary,
@@ -781,6 +872,7 @@ function DashboardPage() {
     categoryPerformance,
     categoryStats,
     consistency,
+    pastInterviewReports,
     recentHeroReports,
     latestReport,
     profileSummary,
@@ -879,6 +971,70 @@ function DashboardPage() {
               )}
             </div>
           </div>
+        </section>
+
+        <section className="dashboard-past-interviews dashboard-panel">
+          <div className="dashboard-panel__header">
+            <div>
+              <span className="dashboard-panel__eyebrow">Interview history</span>
+              <h2>Past interviews</h2>
+            </div>
+            <div className="dashboard-panel__meta">
+              <Briefcase size={16} />
+              {pastInterviewReports.length} saved
+            </div>
+          </div>
+
+          {pastInterviewReports.length ? (
+            <div className="dashboard-history-table-wrap">
+              <table className="dashboard-history-table">
+                <thead>
+                  <tr>
+                    <th>Interview Type</th>
+                    <th>Role / Language / Type</th>
+                    <th>Date</th>
+                    <th>Score</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pastInterviewReports.map((row) => (
+                    <tr key={`past-${row.id}`}>
+                      <td>
+                        <span className={`dashboard-type-pill dashboard-type-pill-${row.categoryKey}`}>
+                          {row.modeLabel}
+                        </span>
+                      </td>
+                      <td>
+                        <strong className="dashboard-history-focus">{row.sessionLabel}</strong>
+                        <span className="dashboard-history-duration">{row.duration}</span>
+                      </td>
+                      <td>{row.dateLabel}</td>
+                      <td>
+                        <span className={`dashboard-history-score dashboard-history-score-${row.scoreTone}`}>
+                          {row.score}%
+                        </span>
+                      </td>
+                      <td>Completed</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="dashboard-history-action"
+                          disabled={!row.report.session_id}
+                          onClick={() => navigate(`/reports/${row.report.session_id}`, { state: { report: row.report } })}
+                        >
+                          View Report
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="dashboard-empty-state">No past interviews yet. Completed technical, behavioral, mock, resume, and aptitude sessions will appear here.</div>
+          )}
         </section>
 
         {error ? (

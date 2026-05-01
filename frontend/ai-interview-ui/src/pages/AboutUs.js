@@ -14,6 +14,7 @@ import {
   Users,
 } from "lucide-react";
 import "../App.css";
+import { useScrollToTop } from "../hooks/useScrollToTop";
 
 const signalCards = [
   {

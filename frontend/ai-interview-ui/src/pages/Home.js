@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useScrollToTop } from "../hooks/useScrollToTop";
 import { BrainCircuit, BriefcaseBusiness, Code2, FileSearch, Mic2, Sigma } from "lucide-react";
 import analyticsImage from "../assets/Analytics.png";
 import feedbackImage from "../assets/feedback.png";
@@ -155,6 +156,7 @@ const faqItems = [
 ];
 
 function Home() {
+  useScrollToTop();
   const navigate = useNavigate();
   const categoriesSectionRef = React.useRef(null);
   const [platformMetrics, setPlatformMetrics] = useState({

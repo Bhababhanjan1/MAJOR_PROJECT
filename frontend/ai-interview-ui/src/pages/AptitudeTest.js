@@ -240,6 +240,7 @@ function createSummary(sectionId, questions, answers, reason = "manual", visited
   return {
     sectionId,
     mode: "mcq",
+    completedAt: new Date().toISOString(),
     totalQuestions: questions.length,
     answeredCount,
     ...counts,
@@ -270,6 +271,7 @@ function createCodingSessionSummary(sectionId, challenges, answers, language, ru
   return {
     sectionId,
     mode: "coding",
+    completedAt: new Date().toISOString(),
     totalQuestions: items.length,
     answeredCount,
     ...counts,
@@ -792,6 +794,7 @@ function createMockSummary(sectionResults, reason = "manual") {
   return {
     sectionId: "aptitude-mock",
     mode: "mock",
+    completedAt: new Date().toISOString(),
     totalQuestions: safeResults.reduce((total, item) => total + (item.totalQuestions || 0), 0),
     answeredCount: safeResults.reduce((total, item) => total + (item.answeredCount || 0), 0),
     visitedCount: safeResults.reduce((total, item) => total + (item.visitedCount || 0), 0),
@@ -800,6 +803,111 @@ function createMockSummary(sectionResults, reason = "manual") {
     score: safeResults.reduce((total, item) => total + (item.score || 0), 0),
     autoSubmitted: reason === "auto",
     sections: safeResults,
+  };
+}
+
+function getAptitudeSummaryMaxScore(summary) {
+  if (!summary) return 0;
+  if (summary.mode === "mock") {
+    return (summary.sections || []).reduce((total, section) => total + getAptitudeSummaryMaxScore(section), 0);
+  }
+  if (summary.mode === "coding") {
+    return (summary.codingItems || []).reduce((total, item) => total + (Number(item.execution?.total) || 0), 0) || summary.totalQuestions || 0;
+  }
+  return summary.totalQuestions || 0;
+}
+
+function getAptitudeQuestionOutline(summary) {
+  if (!summary) return [];
+  if (summary.mode === "mock") {
+    return (summary.sections || []).flatMap((section) => getAptitudeQuestionOutline(section));
+  }
+  if (summary.mode === "coding") {
+    return (summary.codingItems || []).map((item, index) => ({
+      id: `${summary.sectionId || "coding"}-${index + 1}`,
+      question: item.challenge?.title || item.challenge?.description || `Coding question ${index + 1}`,
+      question_type: "coding",
+      score: item.execution?.total ? Math.round(((item.execution?.passed || 0) / item.execution.total) * 100) : 0,
+    }));
+  }
+  return (summary.items || []).map((item, index) => ({
+    id: item.sessionId || `${summary.sectionId || "aptitude"}-${index + 1}`,
+    question: item.question || item.prompt || `Question ${index + 1}`,
+    question_type: "mcq",
+    score: item.isCorrect ? 100 : 0,
+  }));
+}
+
+function getAptitudeEvaluations(summary) {
+  if (!summary) return [];
+  if (summary.mode === "mock") {
+    return (summary.sections || []).flatMap((section) => getAptitudeEvaluations(section));
+  }
+  if (summary.mode === "coding") {
+    return (summary.codingItems || []).map((item, index) => ({
+      question_id: `${summary.sectionId || "coding"}-${index + 1}`,
+      question: item.challenge?.title || item.challenge?.description || `Coding question ${index + 1}`,
+      question_type: "coding",
+      answer: item.sourceCode || "",
+      feedback: item.review?.summary || "",
+      strengths: item.review?.strengths || [],
+      gaps: item.review?.issues || item.review?.next_steps || [],
+      suggestions: item.review?.next_steps || [],
+      score: item.execution?.total ? Math.round(((item.execution?.passed || 0) / item.execution.total) * 100) : 0,
+      provider: "aptitude",
+    }));
+  }
+  return (summary.items || []).map((item, index) => ({
+    question_id: item.sessionId || `${summary.sectionId || "aptitude"}-${index + 1}`,
+    question: item.question || item.prompt || `Question ${index + 1}`,
+    question_type: "mcq",
+    answer: item.selectedAnswer || "",
+    feedback: item.isCorrect ? "Correct answer selected." : `Correct answer: ${item.correctAnswer || item.answer || "N/A"}`,
+    score: item.isCorrect ? 100 : 0,
+    provider: "aptitude",
+  }));
+}
+
+function buildAptitudeReportPayload(summary, candidateName = "") {
+  const section = getSectionConfig(summary?.sectionId);
+  const mockTitle = summary?.mode === "mock" ? "Aptitude Mock" : "";
+  const sectionTitle = mockTitle || section.title || "Aptitude";
+  const maxScore = getAptitudeSummaryMaxScore(summary);
+  const scorePercent = maxScore ? Math.round(((summary.score || 0) / maxScore) * 100) : 0;
+  const questionOutline = getAptitudeQuestionOutline(summary);
+  const evaluations = getAptitudeEvaluations(summary);
+  const answered = summary?.answeredCount || 0;
+  const total = summary?.totalQuestions || 0;
+
+  return {
+    category: "aptitude",
+    interview_type: "aptitude",
+    selected_mode: "aptitude",
+    score: scorePercent,
+    overall_score: scorePercent,
+    summary: `${sectionTitle} completed with ${summary?.score || 0}/${maxScore || total} points and ${answered}/${total} questions answered.`,
+    top_strengths: scorePercent >= 70 ? ["Strong accuracy in this aptitude round."] : [],
+    improvement_areas: scorePercent < 70 ? ["Review missed questions and repeat a focused aptitude round."] : [],
+    strongest_questions: evaluations.filter((item) => item.score >= 100).map((item) => item.question).slice(0, 3),
+    needs_work_questions: evaluations.filter((item) => item.score < 100).map((item) => item.question).slice(0, 3),
+    answers: evaluations.map((item) => item.answer),
+    evaluations,
+    questions_answered: answered,
+    total_questions: total,
+    question_outline: questionOutline,
+    transcript: JSON.stringify(summary),
+    completed_at: summary?.completedAt,
+    context: {
+      category: "aptitude",
+      selected_mode: "aptitude",
+      aptitude_type: summary?.sectionId || "aptitude",
+      section_id: summary?.sectionId || "aptitude",
+      section_title: sectionTitle,
+      test_type: summary?.mode || "mcq",
+      coding_level: summary?.mode === "coding" ? section.codingLevel || "" : "",
+      candidate_name: candidateName,
+      practice_type: summary?.mode === "mock" ? "mock test" : "aptitude test",
+    },
   };
 }
 
@@ -846,6 +954,7 @@ function AptitudeTest({ examOnly = false }) {
   const setupSectionRef = useRef(null);
   const startupRunIdRef = useRef(0);
   const startupOverlayRef = useRef(null);
+  const savedSummaryKeysRef = useRef(new Set());
 
   const selectedSectionConfig = useMemo(() => getSectionConfig(selectedSection), [selectedSection]);
   const mockMode = isMockSection(selectedSection);
@@ -1017,6 +1126,39 @@ function AptitudeTest({ examOnly = false }) {
       setShowDetailedResults(false);
     }
   }, [stage, summary]);
+
+  useEffect(() => {
+    if (stage !== "summary" || !summary) return;
+
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    const summaryKey = [
+      summary.completedAt,
+      summary.sectionId,
+      summary.mode,
+      summary.score,
+      summary.totalQuestions,
+      summary.answeredCount,
+    ].join("|");
+
+    if (savedSummaryKeysRef.current.has(summaryKey)) return;
+    savedSummaryKeysRef.current.add(summaryKey);
+
+    const saveSummary = async () => {
+      try {
+        await axios.post(
+          `${API_BASE_URL}/interview-result`,
+          buildAptitudeReportPayload(summary, candidateName),
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+      } catch (saveError) {
+        console.warn("Failed to save aptitude result to dashboard history.", saveError);
+      }
+    };
+
+    void saveSummary();
+  }, [candidateName, stage, summary]);
 
   useEffect(() => {
     if (!startingTest) return;

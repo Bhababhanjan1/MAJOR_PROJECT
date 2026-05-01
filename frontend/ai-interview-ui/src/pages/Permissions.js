@@ -1,6 +1,7 @@
 import React, { useState, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import "../App.css";
+import { useScrollToTop } from "../hooks/useScrollToTop";
 
 // vector icons (simple, professional)
 const CameraIcon = () => (

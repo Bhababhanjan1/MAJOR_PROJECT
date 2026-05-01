@@ -3983,25 +3983,48 @@ async def extract_resume_interview_data(
 # ================= INTERVIEW RESULTS =================
 @app.post("/interview-result")
 async def save_interview_result(
-    user_id: str = Body(...),
-    category: str = Body(...),
-    score: int = Body(...),
-    transcript: str = Body(...),
-    questions_answered: int = Body(...),
+    payload: dict = Body(...),
     authorization: str = Header(...)
 ):
     """Save interview result to database"""
     try:
         token = authorization.replace("Bearer ", "")
         current_user = await get_current_user(token)
+        now = datetime.now(timezone.utc).isoformat()
+        category = str(payload.get("category") or "general")
+        context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+        score = payload.get("overall_score", payload.get("score", 0))
 
         interview_result = {
-            "user_id": user_id,
+            "session_id": payload.get("session_id") or f"manual-{uuid.uuid4()}",
+            "user_id": str(current_user["_id"]),
             "category": category,
+            "interview_type": payload.get("interview_type") or category,
+            "type": payload.get("type") or category,
+            "selected_mode": payload.get("selected_mode") or context.get("selected_mode"),
+            "job_role": payload.get("job_role") or context.get("job_role"),
+            "primary_language": payload.get("primary_language") or context.get("primary_language"),
+            "experience": payload.get("experience") or context.get("experience"),
+            "context": {
+                "category": category,
+                **context,
+            },
             "score": score,
-            "transcript": transcript,
-            "questions_answered": questions_answered,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "overall_score": score,
+            "summary": payload.get("summary") or payload.get("transcript") or "",
+            "top_strengths": payload.get("top_strengths", []),
+            "improvement_areas": payload.get("improvement_areas", []),
+            "strongest_questions": payload.get("strongest_questions", []),
+            "needs_work_questions": payload.get("needs_work_questions", []),
+            "score_breakdown": payload.get("score_breakdown"),
+            "answers": payload.get("answers", []),
+            "evaluations": payload.get("evaluations", []),
+            "questions_answered": payload.get("questions_answered", 0),
+            "total_questions": payload.get("total_questions", payload.get("question_count", 0)),
+            "question_outline": payload.get("question_outline", payload.get("questions", [])),
+            "transcript": payload.get("transcript", ""),
+            "timestamp": payload.get("timestamp") or now,
+            "completed_at": payload.get("completed_at") or now,
         }
 
         result = await users_collection.update_one(

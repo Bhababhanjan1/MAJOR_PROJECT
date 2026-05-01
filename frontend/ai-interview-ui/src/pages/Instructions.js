@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import "../App.css";
+import { useScrollToTop } from "../hooks/useScrollToTop";
 import logo from "../assets/Website Logo.png";
 
 function Instructions() {
+  useScrollToTop();
   const navigate = useNavigate();
   const location = useLocation();
 

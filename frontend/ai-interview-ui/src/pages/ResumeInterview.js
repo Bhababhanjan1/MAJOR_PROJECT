@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { useLocation, useNavigate } from "react-router-dom";
 import "../App.css";
 import MiniNavbar from "../components/MiniNavbar";
+import { useScrollToTop } from "../hooks/useScrollToTop";
 import resumeHero from "../assets/resume.png";
 import {
   CORPORATE_JOB_ROLES,
@@ -13,6 +14,15 @@ import {
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || "http://127.0.0.1:8000";
 const RESUME_INTERVIEW_STORAGE_KEY = "resumeInterviewFlow";
+const RESUME_EXPERIENCE_OPTIONS = ["Fresher", "Mid-level", "Experienced"];
+const RESUME_ANALYSIS_MIN_DURATION_MS = 10000;
+const RESUME_ANALYSIS_STATUS_MESSAGES = [
+  "Reading resume structure and contact signals...",
+  "Finding skills, tools, and technical keywords...",
+  "Checking projects, internships, and work experience...",
+  "Matching resume evidence with the selected role...",
+  "Preparing the analyzed resume view...",
+];
 
 const HOW_IT_WORKS_CARDS = [
   {
@@ -63,6 +73,7 @@ const EMPTY_REVIEW = {
 };
 
 function ResumeInterview() {
+  useScrollToTop();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -71,13 +82,22 @@ function ResumeInterview() {
   const [resumeBytes, setResumeBytes] = useState(0);
   const [resumeText, setResumeText] = useState("");
   const [jobRole, setJobRole] = useState("");
+  const [resumeExperience, setResumeExperience] = useState("");
   const [stage, setStage] = useState("upload");
   const [reviewData, setReviewData] = useState(EMPTY_REVIEW);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [roleSuggestions, setRoleSuggestions] = useState([]);
   const [showRoleSuggestions, setShowRoleSuggestions] = useState(false);
+  const [validationTarget, setValidationTarget] = useState("");
   const [selectedQuestionCount, setSelectedQuestionCount] = useState(10);
+  const [analysisProgress, setAnalysisProgress] = useState(0);
+  const [analysisStatusIndex, setAnalysisStatusIndex] = useState(0);
+  const activeStepRef = useRef(null);
+  const hasHydratedFlowRef = useRef(false);
+  const roleStageRef = useRef(null);
+  const analysisIllustrationRef = useRef(null);
+  const previewActionsRef = useRef(null);
 
   const authHeaders = () => {
     const token = localStorage.getItem("token");
@@ -103,6 +123,7 @@ function ResumeInterview() {
     setResumeBytes(source.resumeBytes || 0);
     setResumeText(source.resumeText || "");
     setJobRole(source.jobRole || "");
+    setResumeExperience(source.resumeExperience || "");
     setStage(source.stage || "upload");
     setReviewData(source.reviewData || EMPTY_REVIEW);
   }, [location.state]);
@@ -116,15 +137,77 @@ function ResumeInterview() {
         resumeBytes,
         resumeText,
         jobRole,
+        resumeExperience,
         stage,
         reviewData,
       })
     );
-  }, [jobRole, resumeBytes, resumeDataUrl, resumeName, resumeText, reviewData, stage]);
+  }, [jobRole, resumeBytes, resumeDataUrl, resumeExperience, resumeName, resumeText, reviewData, stage]);
 
   const canGoToRoleStage = Boolean(resumeDataUrl);
-  const canRequestReview = Boolean(resumeDataUrl && jobRole.trim());
-  const canStartInterview = Boolean(reviewData.interview_ready && resumeText && jobRole.trim());
+  const canStartInterview = Boolean(reviewData.interview_ready && resumeText && jobRole.trim() && resumeExperience);
+  const isAnalyzingResume = loading && stage === "role";
+
+  useEffect(() => {
+    if (!isAnalyzingResume) return;
+
+    const startedAt = Date.now();
+    setAnalysisProgress(0);
+    setAnalysisStatusIndex(0);
+
+    const scrollTimer = window.setTimeout(() => {
+      analysisIllustrationRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 80);
+
+    const progressTimer = window.setInterval(() => {
+      const elapsed = Date.now() - startedAt;
+      const nextProgress = Math.min(100, Math.round((elapsed / RESUME_ANALYSIS_MIN_DURATION_MS) * 100));
+      setAnalysisProgress(nextProgress);
+    }, 100);
+
+    const statusTimer = window.setInterval(() => {
+      setAnalysisStatusIndex((currentIndex) => (
+        currentIndex + 1
+      ) % RESUME_ANALYSIS_STATUS_MESSAGES.length);
+    }, 1800);
+
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearInterval(progressTimer);
+      window.clearInterval(statusTimer);
+    };
+  }, [isAnalyzingResume]);
+
+  useEffect(() => {
+    if (isAnalyzingResume) return;
+    if (stage === "upload") return;
+
+    // For preview stage, always scroll (including on page reload)
+    // For other stages, respect the hydration guard
+    if (stage !== "preview" && !hasHydratedFlowRef.current) {
+      hasHydratedFlowRef.current = true;
+      return;
+    }
+
+    const scrollTimer = window.setTimeout(() => {
+      if (stage === "preview") {
+        activeStepRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      } else {
+        activeStepRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      }
+    }, 80);
+
+    return () => window.clearTimeout(scrollTimer);
+  }, [isAnalyzingResume, stage]);
 
   const extractedSections = reviewData.extracted || EMPTY_REVIEW.extracted;
   const combinedProjectInternshipItems = useMemo(() => {
@@ -258,10 +341,14 @@ function ResumeInterview() {
   const handleJobRoleChange = (event) => {
     const value = event.target.value;
     setJobRole(value);
+    if (value.trim() && validationTarget === "role") {
+      setValidationTarget("");
+    }
     setShowRoleSuggestions(true);
     if (value.trim()) {
       setRoleSuggestions(getRoleSuggestions(value, CORPORATE_JOB_ROLES));
     } else {
+      setResumeExperience("");
       setRoleSuggestions([]);
     }
   };
@@ -281,19 +368,37 @@ function ResumeInterview() {
 
   const selectRoleSuggestion = (role) => {
     setJobRole(role);
+    if (validationTarget === "role") {
+      setValidationTarget("");
+    }
     setRoleSuggestions(getRoleSuggestions(role, CORPORATE_JOB_ROLES));
     setShowRoleSuggestions(false);
   };
 
   const extractResumeInsights = async () => {
-    if (!canRequestReview) {
-      setError("Upload a resume and choose a job role first.");
+    if (!resumeDataUrl) {
+      setError("Upload a resume before analyzing it.");
+      return;
+    }
+
+    if (!jobRole.trim()) {
+      setValidationTarget("role");
+      roleStageRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+
+    if (!resumeExperience) {
+      setValidationTarget("experience");
+      roleStageRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
 
     try {
+      const analysisStartedAt = Date.now();
       setLoading(true);
       setError("");
+      setValidationTarget("");
+      roleStageRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       const resolvedRole = getResolvedJobRole(jobRole, CORPORATE_JOB_ROLES) || jobRole.trim();
       const response = await axios.post(
         `${API_BASE_URL}/resume-interview/extract`,
@@ -329,21 +434,25 @@ function ResumeInterview() {
       };
       setReviewData(reviewDataObj);
 
-      // Navigate to AnalyzedResume page with all data
-      setTimeout(() => {
-        navigate("/analyzed-resume", {
-          state: {
-            reviewData: reviewDataObj,
-            resumeDataUrl,
-            resumeName,
-            jobRole: resolvedRole,
-            resumeText: response.data?.resume_text || "",
-            resumeBytes,
-            currentFocusAreas,
-            selectedQuestionCount,
-          },
-        });
-      }, 800); // Small delay to let loading overlay complete
+      const elapsed = Date.now() - analysisStartedAt;
+      const remainingDelay = Math.max(0, RESUME_ANALYSIS_MIN_DURATION_MS - elapsed);
+      if (remainingDelay > 0) {
+        await new Promise((resolve) => window.setTimeout(resolve, remainingDelay));
+      }
+
+      navigate("/analyzed-resume", {
+        state: {
+          reviewData: reviewDataObj,
+          resumeDataUrl,
+          resumeName,
+          jobRole: resolvedRole,
+          resumeExperience,
+          resumeText: response.data?.resume_text || "",
+          resumeBytes,
+          currentFocusAreas,
+          selectedQuestionCount,
+        },
+      });
     } catch (requestError) {
       const statusCode = requestError?.response?.status;
       const backendDetail = requestError?.response?.data?.detail;
@@ -385,7 +494,7 @@ function ResumeInterview() {
         resumeBytes,
         selectedOptions: currentFocusAreas,
         focusAreas: currentFocusAreas,
-        experience: "Resume-based",
+        experience: resumeExperience,
         questionCount: selectedQuestionCount,
         practiceType: "voice interview",
         resumeInsights: reviewData,
@@ -399,6 +508,7 @@ function ResumeInterview() {
     setResumeBytes(0);
     setResumeText("");
     setJobRole("");
+    setResumeExperience("");
     setStage("upload");
     setReviewData(EMPTY_REVIEW);
     setRoleSuggestions([]);
@@ -475,8 +585,43 @@ function ResumeInterview() {
     </section>
   );
 
+  const renderValidationPopup = (target, message) => (
+    validationTarget === target ? (
+      <div
+        style={{
+          position: "absolute",
+          left: 12,
+          top: -42,
+          zIndex: 30,
+          padding: "9px 12px",
+          borderRadius: 12,
+          background: "#0f172a",
+          color: "#fff",
+          fontSize: 12,
+          fontWeight: 800,
+          boxShadow: "0 14px 30px rgba(15, 23, 42, 0.22)",
+          pointerEvents: "none",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {message}
+        <span
+          style={{
+            position: "absolute",
+            left: 18,
+            bottom: -6,
+            width: 12,
+            height: 12,
+            background: "#0f172a",
+            transform: "rotate(45deg)",
+          }}
+        />
+      </div>
+    ) : null
+  );
+
   return (
-    <div className="mock-page resume-page reveal">
+    <div className={`mock-page resume-page reveal ${isAnalyzingResume ? "is-resume-analyzing" : ""}`}>
       <MiniNavbar />
 
       <div style={{ position: "absolute", top: 20, right: 20 }}>
@@ -501,9 +646,9 @@ function ResumeInterview() {
       </div>
 
       <section className="mock-section how-it-works-section" style={{ marginTop: 10 }}>
-        <div style={{ textAlign: "center", marginBottom: 28 }}>
-          <h2 style={{ marginBottom: 10 }}>How It Works</h2>
-          <p style={{ color: "#475569", margin: 0 }}>
+        <div className="resume-how-it-works-head">
+          <h2>How It Works</h2>
+          <p>
             Keep the landing page feel, but make the interview flow smarter after the resume is uploaded.
           </p>
         </div>
@@ -542,7 +687,7 @@ function ResumeInterview() {
         ) : null}
 
         {/* Loading Overlay */}
-        {loading && (
+        {false && loading && (
           <div style={{
             position: "fixed",
             top: 0,
@@ -629,13 +774,14 @@ function ResumeInterview() {
           </div>
         )}
 
-        {stage !== "review" && (
+        {stage !== "review" && !isAnalyzingResume && (
           <div
+            ref={activeStepRef}
             className="resume-studio-card"
             style={{
-              maxWidth: 760,
+              maxWidth: stage === "preview" ? 1040 : 760,
               margin: "0 auto",
-              padding: 28,
+              padding: stage === "preview" ? 24 : 28,
             }}
           >
             {stage === "upload" && (
@@ -699,41 +845,43 @@ function ResumeInterview() {
                     Confirm the uploaded file before choosing the target role.
                   </p>
                 </div>
-                <div className="resume-analyzer-preview-card" style={{ padding: 14 }}>
+                <div className="resume-analyzer-preview-card resume-interview-preview-card">
                   {resumeDataUrl ? (
                     <iframe
                       title="Resume preview"
                       src={resumeDataUrl}
-                      style={{ width: "100%", height: 480, border: 0, borderRadius: 18 }}
+                      className="resume-interview-preview-frame"
                     />
                   ) : null}
                 </div>
-                <div style={{ marginTop: 12, color: "#64748b", fontWeight: 600 }}>
-                  {resumeName} {resumeBytes ? `• ${(resumeBytes / 1024).toFixed(1)} KB` : ""}
-                </div>
-                <div style={{ marginTop: 22, display: "flex", justifyContent: "space-between", gap: 14 }}>
-                  <button
-                    className="mock-btn"
-                    style={{ background: "rgba(255,255,255,0.12)", color: "#0f172a" }}
-                    onClick={resetFlow}
-                    disabled={loading}
-                  >
-                    Change File
-                  </button>
-                  <button
-                    className="mock-btn"
-                    style={{ background: "#059669" }}
-                    onClick={() => setStage("role")}
-                    disabled={!canGoToRoleStage || loading}
-                  >
-                    Next
-                  </button>
+                <div className="resume-interview-preview-actions" ref={previewActionsRef}>
+                  <div className="resume-interview-preview-file">
+                    {resumeName} {resumeBytes ? `• ${(resumeBytes / 1024).toFixed(1)} KB` : ""}
+                  </div>
+                  <div className="resume-interview-preview-buttons">
+                    <button
+                      className="mock-btn"
+                      style={{ background: "rgba(255,255,255,0.12)", color: "#0f172a" }}
+                      onClick={resetFlow}
+                      disabled={loading}
+                    >
+                      Change File
+                    </button>
+                    <button
+                      className="mock-btn"
+                      style={{ background: "#059669" }}
+                      onClick={() => setStage("role")}
+                      disabled={!canGoToRoleStage || loading}
+                    >
+                      Next
+                    </button>
+                  </div>
                 </div>
               </>
             )}
 
             {stage === "role" && (
-              <>
+              <div ref={roleStageRef}>
                 <div style={{ marginBottom: 20 }}>
                   <span style={{ color: "#0f766e", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", fontSize: 12 }}>
                     Stage 3
@@ -744,7 +892,79 @@ function ResumeInterview() {
                   </p>
                 </div>
 
+                {loading ? (
+                  <div
+                    style={{
+                      display: "grid",
+                      justifyItems: "center",
+                      gap: 16,
+                      padding: "28px 18px 12px",
+                      textAlign: "center",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 82,
+                        height: 82,
+                        borderRadius: 24,
+                        display: "grid",
+                        placeItems: "center",
+                        background: "linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(124, 58, 237, 0.14))",
+                        border: "1px solid rgba(37, 99, 235, 0.16)",
+                        color: "#2563eb",
+                        fontSize: 28,
+                        fontWeight: 900,
+                        animation: "resumeAnalyzePulse 1.5s infinite ease-in-out",
+                      }}
+                    >
+                      CV
+                    </div>
+                    <div>
+                      <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: "1.35rem" }}>
+                        Analyzing Your Resume
+                      </h3>
+                      <p style={{ margin: 0, color: "#64748b", fontSize: "0.95rem" }}>
+                        Extracting skills, experience, and key signals...
+                      </p>
+                    </div>
+                    <div
+                      style={{
+                        width: "min(100%, 360px)",
+                        height: 8,
+                        borderRadius: 999,
+                        overflow: "hidden",
+                        background: "#e2e8f0",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          borderRadius: 999,
+                          background: "linear-gradient(90deg, #2563eb, #7c3aed)",
+                          animation: "resumeAnalyzeSlide 2s ease-in-out infinite",
+                        }}
+                      />
+                    </div>
+                    <span style={{ color: "#94a3b8", fontSize: "0.85rem", fontWeight: 700 }}>
+                      This may take up to 30 seconds...
+                    </span>
+                    <style>{`
+                      @keyframes resumeAnalyzePulse {
+                        0%, 100% { transform: scale(1); }
+                        50% { transform: scale(1.08); }
+                      }
+                      @keyframes resumeAnalyzeSlide {
+                        0% { transform: translateX(-100%); }
+                        50% { transform: translateX(0); }
+                        100% { transform: translateX(100%); }
+                      }
+                    `}</style>
+                  </div>
+                ) : (
+                  <>
                 <div style={{ position: "relative" }}>
+                  {renderValidationPopup("role", "Please select a job role first.")}
                   <input
                     type="text"
                     value={jobRole}
@@ -802,6 +1022,51 @@ function ResumeInterview() {
                   ) : null}
                 </div>
 
+                {jobRole.trim() ? (
+                  <div style={{ marginTop: 18, position: "relative" }}>
+                    {renderValidationPopup("experience", "Please select experience level.")}
+                    <label
+                      htmlFor="resume-experience"
+                      style={{
+                        display: "block",
+                        marginBottom: 8,
+                        color: "#0f172a",
+                        fontSize: 13,
+                        fontWeight: 800,
+                      }}
+                    >
+                      Experience level
+                    </label>
+                    <select
+                      id="resume-experience"
+                      value={resumeExperience}
+                      onChange={(event) => {
+                        setResumeExperience(event.target.value);
+                        if (event.target.value && validationTarget === "experience") {
+                          setValidationTarget("");
+                        }
+                      }}
+                      style={{
+                        width: "100%",
+                        padding: "14px 16px",
+                        borderRadius: 16,
+                        border: "1px solid #cbd5e1",
+                        background: "#fff",
+                        color: resumeExperience ? "#0f172a" : "#64748b",
+                        fontSize: 15,
+                        fontWeight: 700,
+                      }}
+                    >
+                      <option value="">Select experience level</option>
+                      {RESUME_EXPERIENCE_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
+
                 <div style={{ marginTop: 22, display: "flex", justifyContent: "space-between", gap: 14 }}>
                   <button
                     className="mock-btn"
@@ -815,15 +1080,44 @@ function ResumeInterview() {
                     className="mock-btn"
                     style={{ background: "#2563eb" }}
                     onClick={extractResumeInsights}
-                    disabled={!canRequestReview || loading}
+                    disabled={loading}
                   >
                     {loading ? "Analyzing..." : "Analyze My Resume"}
                   </button>
                 </div>
-              </>
+                  </>
+                )}
+              </div>
             )}
           </div>
         )}
+
+        {isAnalyzingResume ? (
+          <section
+            ref={analysisIllustrationRef}
+            className="resume-interview-analysis-stage"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <div className="resume-interview-analysis-illustration" aria-hidden="true">
+              <div className="resume-interview-analysis-document">
+                <span />
+                <span />
+                <span />
+              </div>
+              <div className="resume-interview-analysis-lens" />
+            </div>
+            <div className="resume-interview-analysis-copy">
+              <span>Resume analysis</span>
+              <h2>Analyzing Your Resume</h2>
+              <p>{RESUME_ANALYSIS_STATUS_MESSAGES[analysisStatusIndex]}</p>
+            </div>
+            <div className="resume-interview-analysis-progress">
+              <span style={{ width: `${analysisProgress}%` }} />
+            </div>
+            <small>{analysisProgress}% complete</small>
+          </section>
+        ) : null}
       </div>
     </div>
   );

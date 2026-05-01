@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { useScrollToTop } from "../hooks/useScrollToTop";
 import ImageCropModal from "../components/ImageCropModal";
 
 function EditProfile() {
+  useScrollToTop();
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
 

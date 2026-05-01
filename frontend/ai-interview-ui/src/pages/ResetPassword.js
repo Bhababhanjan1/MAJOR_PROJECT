@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
 import "../App.css";
+import { useScrollToTop } from "../hooks/useScrollToTop";
 import interviewrLogo from "../assets/Website Logo.png";
 import interviewrWordmark from "../assets/Main Logo 2.png";
 
@@ -10,6 +11,7 @@ const api = axios.create({
 });
 
 function ResetPassword() {
+  useScrollToTop();
   const navigate = useNavigate();
   const location = useLocation();
   const [password, setPassword] = useState("");

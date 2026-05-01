@@ -192,6 +192,9 @@ export const normalizeReport = (report, fallbackContext = {}, fallbackUser = nul
 
   return {
     session_id: safeText(report?.session_id),
+    interview_type: safeText(report?.interview_type || report?.type),
+    created_at: safeText(report?.created_at || report?.createdAt || report?.timestamp),
+    completed_at: safeText(report?.completed_at || report?.completedAt || report?.ended_at || report?.endedAt),
     overall_score: safeScore(report?.overall_score ?? report?.score),
     summary: safeText(report?.summary),
     ended_early: Boolean(report?.ended_early),
@@ -219,12 +222,18 @@ export const normalizeReport = (report, fallbackContext = {}, fallbackUser = nul
       primary_language: safeText(context?.primary_language),
       experience: safeText(context?.experience),
       config_mode: safeText(context?.config_mode),
+      mode: safeText(context?.mode),
       practice_type: safeText(context?.practice_type),
       interview_mode_time: safeText(context?.interview_mode_time),
       time_mode_interval: safeText(context?.time_mode_interval),
       selected_options: safeTextList(context?.selected_options),
       focus_areas: safeTextList(context?.focus_areas || context?.selected_options),
       hr_round: safeText(context?.hr_round),
+      aptitude_type: safeText(context?.aptitude_type),
+      section_id: safeText(context?.section_id || context?.sectionId),
+      section_title: safeText(context?.section_title || context?.sectionTitle),
+      test_type: safeText(context?.test_type || context?.testType),
+      coding_level: safeText(context?.coding_level || context?.codingLevel),
     },
     user: user
       ? {

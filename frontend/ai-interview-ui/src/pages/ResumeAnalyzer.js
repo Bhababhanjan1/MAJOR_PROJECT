@@ -13,6 +13,7 @@ import {
   WandSparkles,
 } from "lucide-react";
 import "../App.css";
+import { useScrollToTop } from "../hooks/useScrollToTop";
 import {
   CORPORATE_JOB_ROLES,
   getResolvedJobRole,
@@ -89,6 +90,7 @@ Career Objective: ${careerObjective}`;
 }
 
 function ResumeAnalyzer() {
+  useScrollToTop();
   const navigate = useNavigate();
   const [resumeName, setResumeName] = useState("");
   const [resumeDataUrl, setResumeDataUrl] = useState("");

@@ -1,4 +1,5 @@
 import React, { useMemo } from "react";
+import { useScrollToTop } from "../hooks/useScrollToTop";
 import {
   ArrowLeft,
   BadgeCheck,
@@ -982,6 +983,7 @@ function ResumeAnalyzerWorkspace({ pageData, result, onAnalyzeAnother, onBackToA
   );
 }
 function ResumeAnalyzerResults() {
+  useScrollToTop();
   const navigate = useNavigate();
   const location = useLocation();
   const navigationPayload = normalizeResultPayload(location.state?.resultPayload);

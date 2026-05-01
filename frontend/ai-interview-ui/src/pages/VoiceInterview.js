@@ -1,7 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-
-
-
+import { useScrollToTop } from "../hooks/useScrollToTop";
 import { useLocation, useNavigate } from "react-router-dom";
 
 

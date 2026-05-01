@@ -1,8 +1,10 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
+import { ArrowLeft, CheckCircle2, FileText, Home, Mic, RotateCcw } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import "../App.css";
 import MiniNavbar from "../components/MiniNavbar";
 import { normalizeRoleText } from "../utils/roleSearch";
+import { useScrollToTop } from "../hooks/useScrollToTop";
 
 const EMPTY_REVIEW = {
   candidate_name: "",
@@ -25,16 +27,67 @@ const EMPTY_REVIEW = {
   ready_reason: "",
 };
 
+const getInitials = (name, fallback = "CV") => {
+  const initials = String(name || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+  return initials || fallback;
+};
+
+const renderList = (items, emptyText, limit = 5) => {
+  const visibleItems = (items || []).filter(Boolean).slice(0, limit);
+
+  if (!visibleItems.length) {
+    return <p className="analyzed-pro-empty">{emptyText}</p>;
+  }
+
+  return (
+    <ul className="analyzed-pro-list">
+      {visibleItems.map((item) => (
+        <li key={item}>{item}</li>
+      ))}
+      {(items || []).length > limit ? (
+        <li className="analyzed-pro-muted">+{items.length - limit} more</li>
+      ) : null}
+    </ul>
+  );
+};
+
+const renderChips = (items, emptyText, limit = 12) => {
+  const visibleItems = (items || []).filter(Boolean).slice(0, limit);
+
+  if (!visibleItems.length) {
+    return <p className="analyzed-pro-empty">{emptyText}</p>;
+  }
+
+  return (
+    <div className="analyzed-pro-chip-row">
+      {visibleItems.map((item) => (
+        <span key={item} className="analyzed-pro-chip">
+          {item}
+        </span>
+      ))}
+      {(items || []).length > limit ? (
+        <span className="analyzed-pro-chip is-muted">+{items.length - limit} more</span>
+      ) : null}
+    </div>
+  );
+};
+
 function AnalyzedResume() {
+  useScrollToTop();
   const navigate = useNavigate();
   const location = useLocation();
-  const [expandedSection, setExpandedSection] = useState(null);
 
   const state = location.state || {};
   const reviewData = state.reviewData || EMPTY_REVIEW;
   const resumeDataUrl = state.resumeDataUrl || "";
   const resumeName = state.resumeName || "";
   const jobRole = state.jobRole || "";
+  const resumeExperience = state.resumeExperience || "Resume-based";
   const currentFocusAreas = state.currentFocusAreas || [];
   const selectedQuestionCount = state.selectedQuestionCount || 10;
 
@@ -42,333 +95,206 @@ function AnalyzedResume() {
   const combinedProjectInternshipItems = useMemo(() => {
     const merged = [];
     const seen = new Set();
-    [...(extractedSections.internships || []), ...(extractedSections.projects || [])].forEach(
-      (item) => {
-        const cleaned = String(item || "").trim();
-        const canonical = normalizeRoleText(cleaned);
-        if (!cleaned || !canonical || seen.has(canonical)) return;
-        seen.add(canonical);
-        merged.push(cleaned);
-      }
-    );
+    [...(extractedSections.internships || []), ...(extractedSections.projects || [])].forEach((item) => {
+      const cleaned = String(item || "").trim();
+      const canonical = normalizeRoleText(cleaned);
+      if (!cleaned || !canonical || seen.has(canonical)) return;
+      seen.add(canonical);
+      merged.push(cleaned);
+    });
     return merged;
   }, [extractedSections.internships, extractedSections.projects]);
 
+  const candidateName =
+    reviewData.candidate_name || resumeName.replace(/\.pdf$/i, "").replace(/[_-]+/g, " ") || "Candidate";
   const skillCount = (extractedSections.technical_skills || []).length;
   const projectCount = combinedProjectInternshipItems.length;
   const experienceCount = (extractedSections.experience || []).length;
   const educationCount = (extractedSections.educational_qualifications || []).length;
 
+  const startInterview = () => {
+    navigate("/interview", {
+      state: {
+        category: "resume",
+        selectedMode: "role",
+        stage: "role",
+        jobRole,
+        resumeText: state.resumeText || "",
+        resumeDataUrl,
+        resumeName,
+        resumeBytes: state.resumeBytes || 0,
+        selectedOptions: currentFocusAreas,
+        focusAreas: currentFocusAreas,
+        experience: resumeExperience,
+        questionCount: selectedQuestionCount,
+        practiceType: "voice interview",
+        resumeInsights: reviewData,
+      },
+    });
+  };
+
+  const summaryStats = [
+    { label: "Skills", value: skillCount },
+    { label: "Projects", value: projectCount },
+    { label: "Experience", value: experienceCount },
+    { label: "Education", value: educationCount },
+  ];
+
   return (
-    <div className="analyzed-unique-page">
+    <div className="analyzed-pro-page">
       <MiniNavbar />
 
-      {/* Animated Background */}
-      <div className="analyzed-bg-animation">
-        <div className="analyzed-blob blob-1"></div>
-        <div className="analyzed-blob blob-2"></div>
-        <div className="analyzed-blob blob-3"></div>
-      </div>
-
-      {/* Main Content */}
-      <div className="analyzed-main-wrapper">
-        {/* Profile Card */}
-        <div className="analyzed-profile-hero">
-          <div className="analyzed-profile-left">
-            <div className="analyzed-avatar-large">
-              {reviewData.candidate_name
-                ?.split(/\s+/)
-                .slice(0, 2)
-                .map((p) => p[0]?.toUpperCase())
-                .join("") || "CV"}
+      <main className="analyzed-pro-shell">
+        <section className="analyzed-pro-header">
+          <div className="analyzed-pro-identity">
+            <div className="analyzed-pro-avatar">{getInitials(candidateName)}</div>
+            <div>
+              <div className="analyzed-pro-kicker">Analyzed Resume</div>
+              <h1>{candidateName}</h1>
+              <p>{jobRole || "Resume-based interview"} · {resumeExperience}</p>
             </div>
-            <div className="analyzed-profile-info">
-              <h1>{reviewData.candidate_name || resumeName.replace(/\.pdf$/i, "")}</h1>
-              <p className="analyzed-target-role">{jobRole}</p>
-              <div className="analyzed-readiness-badge">
-                <span className={reviewData.interview_ready ? "ready" : "pending"}>
-                  {reviewData.interview_ready ? "✓ Interview Ready" : "⚡ Review Recommended"}
-                </span>
+          </div>
+
+          <div className="analyzed-pro-actions">
+            <button type="button" className="analyzed-pro-icon-btn" onClick={() => navigate("/")}>
+              <Home size={18} />
+              Home
+            </button>
+            <button type="button" className="analyzed-pro-icon-btn" onClick={() => navigate(-1)}>
+              <ArrowLeft size={18} />
+              Back
+            </button>
+            <button type="button" className="analyzed-pro-primary-btn" onClick={startInterview}>
+              <Mic size={18} />
+              Start Interview
+            </button>
+          </div>
+        </section>
+
+        <section className="analyzed-pro-summary">
+          <article className={`analyzed-pro-readiness ${reviewData.interview_ready ? "is-ready" : "is-pending"}`}>
+            <CheckCircle2 size={22} />
+            <div>
+              <span>{reviewData.interview_ready ? "Interview Ready" : "Review Recommended"}</span>
+              <p>{reviewData.ready_reason || "Resume signals were extracted and prepared for interview setup."}</p>
+            </div>
+          </article>
+
+          <div className="analyzed-pro-stat-grid">
+            {summaryStats.map((stat) => (
+              <article key={stat.label} className="analyzed-pro-stat">
+                <strong>{stat.value}</strong>
+                <span>{stat.label}</span>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="analyzed-pro-layout">
+          <aside className="analyzed-pro-preview-panel">
+            <div className="analyzed-pro-panel-head">
+              <div>
+                <span>Resume Preview</span>
+                <h2>{resumeName || "Uploaded resume"}</h2>
               </div>
+              <FileText size={22} />
             </div>
-          </div>
-
-          {/* Stats Grid */}
-          <div className="analyzed-stats-grid">
-            <div className="analyzed-stat-card">
-              <div className="analyzed-stat-number">{skillCount}</div>
-              <div className="analyzed-stat-label">Skills</div>
-            </div>
-            <div className="analyzed-stat-card">
-              <div className="analyzed-stat-number">{projectCount}</div>
-              <div className="analyzed-stat-label">Projects</div>
-            </div>
-            <div className="analyzed-stat-card">
-              <div className="analyzed-stat-number">{experienceCount}</div>
-              <div className="analyzed-stat-label">Experience</div>
-            </div>
-            <div className="analyzed-stat-card">
-              <div className="analyzed-stat-number">{educationCount}</div>
-              <div className="analyzed-stat-label">Education</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Signals Grid - Fields Present/Missing */}
-        <div className="analyzed-signals-grid">
-          <div className="analyzed-signal-card">
-            <div className="analyzed-signal-header">
-              <strong>Skills</strong>
-              <span className="analyzed-signal-badge present">Present</span>
-            </div>
-            {skillCount > 0 ? (
-              <div className="analyzed-signal-items">
-                {(extractedSections.technical_skills || []).slice(0, 3).map((skill, idx) => (
-                  <span key={idx} className="analyzed-signal-item">{skill}</span>
-                ))}
-              </div>
-            ) : (
-              <p className="analyzed-signal-empty">No skills found</p>
-            )}
-          </div>
-
-          <div className="analyzed-signal-card">
-            <div className="analyzed-signal-header">
-              <strong>Experience</strong>
-              <span className={`analyzed-signal-badge ${experienceCount > 0 ? "present" : "missing"}`}>
-                {experienceCount > 0 ? "Present" : "Missing"}
-              </span>
-            </div>
-            {experienceCount > 0 ? (
-              <div className="analyzed-signal-items">
-                {(extractedSections.experience || []).slice(0, 2).map((exp, idx) => (
-                  <span key={idx} className="analyzed-signal-item">{exp.substring(0, 30)}</span>
-                ))}
-              </div>
-            ) : (
-              <p className="analyzed-signal-empty">No experience found</p>
-            )}
-          </div>
-
-          <div className="analyzed-signal-card">
-            <div className="analyzed-signal-header">
-              <strong>Education</strong>
-              <span className={`analyzed-signal-badge ${educationCount > 0 ? "present" : "missing"}`}>
-                {educationCount > 0 ? "Present" : "Missing"}
-              </span>
-            </div>
-            {educationCount > 0 ? (
-              <div className="analyzed-signal-items">
-                {(extractedSections.educational_qualifications || []).slice(0, 2).map((edu, idx) => (
-                  <span key={idx} className="analyzed-signal-item">{edu.substring(0, 30)}</span>
-                ))}
-              </div>
-            ) : (
-              <p className="analyzed-signal-empty">No education found</p>
-            )}
-          </div>
-
-          <div className="analyzed-signal-card">
-            <div className="analyzed-signal-header">
-              <strong>Projects</strong>
-              <span className={`analyzed-signal-badge ${projectCount > 0 ? "present" : "missing"}`}>
-                {projectCount > 0 ? "Present" : "Missing"}
-              </span>
-            </div>
-            {projectCount > 0 ? (
-              <div className="analyzed-signal-items">
-                {combinedProjectInternshipItems.slice(0, 2).map((proj, idx) => (
-                  <span key={idx} className="analyzed-signal-item">{proj.substring(0, 30)}</span>
-                ))}
-              </div>
-            ) : (
-              <p className="analyzed-signal-empty">No projects found</p>
-            )}
-          </div>
-        </div>
-
-        {/* Two Column Layout */}
-        <div className="analyzed-content-grid">
-          {/* Left Side - PDF */}
-          <div className="analyzed-pdf-container">
-            <div className="analyzed-pdf-box">
-              {resumeDataUrl && (
-                <iframe
-                  title="Resume preview"
-                  src={resumeDataUrl}
-                  className="analyzed-pdf-embed"
-                />
+            <div className="analyzed-pro-pdf-frame">
+              {resumeDataUrl ? (
+                <iframe title="Resume preview" src={resumeDataUrl} className="analyzed-pro-pdf" />
+              ) : (
+                <div className="analyzed-pro-empty-preview">No resume preview available.</div>
               )}
             </div>
-          </div>
+          </aside>
 
-          {/* Right Side - Analysis Cards */}
-          <div className="analyzed-cards-stack">
-            {/* Career Objective */}
-            {extractedSections.career_objective && (
-              <div className="analyzed-modern-card objective-card">
-                <div className="analyzed-card-icon">🎯</div>
-                <div className="analyzed-card-content">
-                  <h3>Career Objective</h3>
-                  <p>{extractedSections.career_objective}</p>
+          <div className="analyzed-pro-details">
+            <article className="analyzed-pro-card is-focus">
+              <div className="analyzed-pro-card-head">
+                <div>
+                  <span>Interview Focus</span>
+                  <h2>What the interview will emphasize</h2>
                 </div>
+                <button type="button" className="analyzed-pro-small-btn" onClick={() => navigate("/resume-interview")}>
+                  <RotateCcw size={16} />
+                  Recheck
+                </button>
               </div>
-            )}
+              {renderChips(currentFocusAreas, "No focus areas were generated yet.", 14)}
+            </article>
 
-            {/* Skills Section */}
-            {skillCount > 0 && (
-              <div className="analyzed-modern-card skills-card">
-                <div className="analyzed-card-header">
-                  <div className="analyzed-card-icon">💻</div>
+            {extractedSections.career_objective ? (
+              <article className="analyzed-pro-card">
+                <div className="analyzed-pro-card-head">
                   <div>
-                    <h3>Technical Skills</h3>
-                    <span className="analyzed-card-count">{skillCount} skills</span>
+                    <span>Summary</span>
+                    <h2>Career Objective</h2>
                   </div>
                 </div>
-                <div className="analyzed-skills-display">
-                  {extractedSections.technical_skills.slice(0, 8).map((skill) => (
-                    <div key={skill} className="analyzed-skill-badge">
-                      {skill}
-                    </div>
-                  ))}
-                  {skillCount > 8 && (
-                    <div className="analyzed-skill-badge more">+{skillCount - 8} more</div>
-                  )}
-                </div>
-              </div>
-            )}
+                <p className="analyzed-pro-copy">{extractedSections.career_objective}</p>
+              </article>
+            ) : null}
 
-            {/* Projects/Internships */}
-            {projectCount > 0 && (
-              <div className="analyzed-modern-card projects-card">
-                <div className="analyzed-card-header">
-                  <div className="analyzed-card-icon">🚀</div>
+            <div className="analyzed-pro-detail-grid">
+              <article className="analyzed-pro-card">
+                <div className="analyzed-pro-card-head">
                   <div>
-                    <h3>Projects & Internships</h3>
-                    <span className="analyzed-card-count">{projectCount} items</span>
+                    <span>{skillCount} found</span>
+                    <h2>Technical Skills</h2>
                   </div>
                 </div>
-                <div className="analyzed-items-list">
-                  {combinedProjectInternshipItems.slice(0, 5).map((item) => (
-                    <div key={item} className="analyzed-list-item">
-                      <span className="analyzed-item-dot"></span>
-                      {item}
-                    </div>
-                  ))}
-                  {projectCount > 5 && (
-                    <div className="analyzed-list-item more">
-                      <span className="analyzed-item-dot"></span>
-                      +{projectCount - 5} more
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+                {renderChips(extractedSections.technical_skills, "No technical skills found.", 12)}
+              </article>
 
-            {/* Experience */}
-            {experienceCount > 0 && (
-              <div className="analyzed-modern-card experience-card">
-                <div className="analyzed-card-header">
-                  <div className="analyzed-card-icon">💼</div>
+              <article className="analyzed-pro-card">
+                <div className="analyzed-pro-card-head">
                   <div>
-                    <h3>Experience</h3>
-                    <span className="analyzed-card-count">{experienceCount} entries</span>
+                    <span>{educationCount} found</span>
+                    <h2>Education</h2>
                   </div>
                 </div>
-                <div className="analyzed-items-list">
-                  {(extractedSections.experience || []).slice(0, 4).map((exp) => (
-                    <div key={exp} className="analyzed-list-item">
-                      <span className="analyzed-item-dot"></span>
-                      {exp}
-                    </div>
-                  ))}
+                {renderList(extractedSections.educational_qualifications, "No education details found.", 4)}
+              </article>
+            </div>
+
+            <article className="analyzed-pro-card">
+              <div className="analyzed-pro-card-head">
+                <div>
+                  <span>{projectCount} found</span>
+                  <h2>Projects & Internships</h2>
                 </div>
               </div>
-            )}
+              {renderList(combinedProjectInternshipItems, "No project or internship details found.", 6)}
+            </article>
 
-            {/* Interview Focus */}
-            {currentFocusAreas.length > 0 && (
-              <div className="analyzed-modern-card focus-card">
-                <div className="analyzed-card-header">
-                  <div className="analyzed-card-icon">🎤</div>
+            <div className="analyzed-pro-detail-grid">
+              <article className="analyzed-pro-card">
+                <div className="analyzed-pro-card-head">
                   <div>
-                    <h3>Interview Focus</h3>
-                    <span className="analyzed-card-count">Key Areas</span>
+                    <span>{experienceCount} found</span>
+                    <h2>Experience</h2>
                   </div>
                 </div>
-                <div className="analyzed-focus-tags">
-                  {currentFocusAreas.map((area) => (
-                    <span key={area} className="analyzed-focus-tag">
-                      {area}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
+                {renderList(extractedSections.experience, "No experience entries found.", 4)}
+              </article>
 
-            {/* Hobbies */}
-            {(extractedSections.hobbies || []).length > 0 && (
-              <div className="analyzed-modern-card hobbies-card">
-                <div className="analyzed-card-header">
-                  <div className="analyzed-card-icon">🎨</div>
+              <article className="analyzed-pro-card">
+                <div className="analyzed-pro-card-head">
                   <div>
-                    <h3>Hobbies & Interests</h3>
-                    <span className="analyzed-card-count">{extractedSections.hobbies.length} interests</span>
+                    <span>Additional signals</span>
+                    <h2>Languages & Interests</h2>
                   </div>
                 </div>
-                <div className="analyzed-hobbies-chips">
-                  {extractedSections.hobbies.map((hobby) => (
-                    <span key={hobby} className="analyzed-hobby-chip">
-                      {hobby}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* CTA Buttons */}
-            <div className="analyzed-cta-buttons">
-              <button
-                className="analyzed-btn-secondary"
-                onClick={() => navigate("/")}
-              >
-                🏠 Home
-              </button>
-              <button
-                className="analyzed-btn-secondary"
-                onClick={() => navigate(-1)}
-              >
-                ← Back
-              </button>
-              <button
-                className="analyzed-btn-primary"
-                onClick={() =>
-                  navigate("/interview", {
-                    state: {
-                      category: "resume",
-                      selectedMode: "role",
-                      stage: "role",
-                      jobRole,
-                      resumeText: state.resumeText || "",
-                      resumeDataUrl,
-                      resumeName,
-                      resumeBytes: state.resumeBytes || 0,
-                      selectedOptions: currentFocusAreas,
-                      focusAreas: currentFocusAreas,
-                      experience: "Resume-based",
-                      questionCount: selectedQuestionCount,
-                      practiceType: "voice interview",
-                      resumeInsights: reviewData,
-                    },
-                  })
-                }
-              >
-                Start Interview →
-              </button>
+                {renderChips(
+                  [...(extractedSections.languages || []), ...(extractedSections.hobbies || [])],
+                  "No language or interest details found.",
+                  10
+                )}
+              </article>
             </div>
           </div>
-        </div>
-      </div>
+        </section>
+      </main>
     </div>
   );
 }

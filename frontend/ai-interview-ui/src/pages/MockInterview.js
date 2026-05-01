@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import "../App.css";
+import { useScrollToTop } from "../hooks/useScrollToTop";
 import MiniNavbar from "../components/MiniNavbar";
 import mockHero from "../assets/mock.png";
 import mistakeImg from "../assets/mistake.png";
@@ -11,6 +12,7 @@ import {
 } from "../utils/roleSearch";
 
 function MockInterview() {
+  useScrollToTop();
   const navigate = useNavigate();
   const rolesList = MOCK_JOB_ROLES;
 

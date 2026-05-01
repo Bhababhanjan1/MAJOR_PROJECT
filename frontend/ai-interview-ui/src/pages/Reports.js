@@ -19,6 +19,7 @@ import {
   Target,
 } from "lucide-react";
 import "../App.css";
+import { useScrollToTop } from "../hooks/useScrollToTop";
 import {
   formatProviderName,
   normalizeReport,
@@ -226,6 +227,7 @@ function buildRetryState(report) {
 }
 
 function Reports() {
+  useScrollToTop();
   const navigate = useNavigate();
   const location = useLocation();
   const { sessionId } = useParams();

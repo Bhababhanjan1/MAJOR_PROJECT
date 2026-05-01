@@ -1,12 +1,14 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import "../App.css";
+import { useScrollToTop } from "../hooks/useScrollToTop";
 import MiniNavbar from "../components/MiniNavbar";
 
 import techImg from "../assets/tech.png";
 import mistakeImg from "../assets/mistake.png";
 
 function TechnicalInterview() {
+  useScrollToTop();
   const navigate = useNavigate();
 
   return (
