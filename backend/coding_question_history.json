@@ -18,31 +18,31 @@
     "sum of digits",
     "count words with vowels",
     "reverse each word",
-    "second largest number",
     "count even numbers in a list",
-    "largest digit in a number",
-    "count positive numbers"
+    "count positive numbers",
+    "second largest number",
+    "largest digit in a number"
   ],
   "hard": [
     "trapping rain water",
     "median of running stream",
     "word ladder steps",
-    "longest unique substring length",
     "alien dictionary order",
     "minimum window substring length",
     "sliding window maximum",
-    "largest rectangle in histogram"
+    "largest rectangle in histogram",
+    "longest unique substring length"
   ],
   "medium": [
     "validate bracket sequence",
     "product of array except self",
     "maximize points by deleting numbers",
     "merge overlapping intervals",
-    "longest consecutive run",
     "longest subarray with sum k",
     "spiral order of matrix",
     "top k frequent numbers",
     "array split point",
-    "group anagrams"
+    "group anagrams",
+    "longest consecutive run"
   ]
 }
