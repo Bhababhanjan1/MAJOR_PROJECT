@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+motor
+pymongo
+python-dotenv
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt
+google-auth
+numpy
+python-multipart
+pypdf
+PyPDF2
